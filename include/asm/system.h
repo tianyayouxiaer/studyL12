@@ -13,9 +13,11 @@ __asm__ ("movl %%esp,%%eax\n\t" \
 	"mov %%ax,%%gs" \
 	:::"ax")
 
-#define sti() __asm__ ("sti"::)
-#define cli() __asm__ ("cli"::)
-#define nop() __asm__ ("nop"::)
+
+//linux 0.12原子操作就是在函数入口前加cli(),再是函数return 的时候sti()
+#define sti() __asm__ ("sti"::) //开中断
+#define cli() __asm__ ("cli"::) //关中断
+#define nop() __asm__ ("nop"::) //空操作
 
 #define iret() __asm__ ("iret"::)
 

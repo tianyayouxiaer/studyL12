@@ -49,17 +49,19 @@
 #include <linux/mm.h>
 #include <asm/system.h>
 
+//存储桶结构描述符
 struct bucket_desc {	/* 16 bytes */
-	void			*page;
-	struct bucket_desc	*next;
-	void			*freeptr;
-	unsigned short		refcnt;
-	unsigned short		bucket_size;
+	void			*page;	//该桶描述符对应的内存页面指针
+	struct bucket_desc	*next; //下一个描述符指针
+	void			*freeptr;	//指向桶中空闲内存位置指针
+	unsigned short		refcnt;	//引用计数
+	unsigned short		bucket_size;//本描述符对应存储桶的大小
 };
 
+//存储桶描述符目录结构
 struct _bucket_dir {	/* 8 bytes */
-	int			size;
-	struct bucket_desc	*chain;
+	int			size;	/该存储桶的大小
+	struct bucket_desc	*chain;	//该存储桶目录项的桶描述符链表指针
 };
 
 /*
@@ -74,8 +76,9 @@ struct _bucket_dir {	/* 8 bytes */
  *
  * Note that this list *must* be kept in order.
  */
+// 存储桶目录列(数组)
 struct _bucket_dir bucket_dir[] = {
-	{ 16,	(struct bucket_desc *) 0},
+	{ 16,	(struct bucket_desc *) 0}, //16字节长度的内存块
 	{ 32,	(struct bucket_desc *) 0},
 	{ 64,	(struct bucket_desc *) 0},
 	{ 128,	(struct bucket_desc *) 0},
@@ -89,31 +92,41 @@ struct _bucket_dir bucket_dir[] = {
 /*
  * This contains a linked list of free bucket descriptor blocks
  */
+ //空闲桶描述符内存块的链表
 struct bucket_desc *free_bucket_desc = (struct bucket_desc *) 0;
 
 /*
  * This routine initializes a bucket description page.
  */
+/*
+ *	功能: 初始化桶描述符，并让free_bucket_desc指向第一个空闲桶描述符
+ *	参数:
+ */ 
 static inline void init_bucket_desc()
 {
 	struct bucket_desc *bdesc, *first;
 	int	i;
 	
-	first = bdesc = (struct bucket_desc *) get_free_page();
+	first = bdesc = (struct bucket_desc *) get_free_page(); //申请一页内存，用于存放桶描述符
 	if (!bdesc)
-		panic("Out of memory in init_bucket_desc()");
-	for (i = PAGE_SIZE/sizeof(struct bucket_desc); i > 1; i--) {
-		bdesc->next = bdesc+1;
+		panic("Out of memory in init_bucket_desc()"); //失败，死机
+	for (i = PAGE_SIZE/sizeof(struct bucket_desc); i > 1; i--) { //计算一页内存中可存放桶描述数量
+		bdesc->next = bdesc+1;//建立单向链接
 		bdesc++;
 	}
 	/*
 	 * This is done last, to avoid race conditions in case 
 	 * get_free_page() sleeps and this routine gets called again....
 	 */
-	bdesc->next = free_bucket_desc;
-	free_bucket_desc = first;
+	bdesc->next = free_bucket_desc; //将空闲桶描述符指针加入链表
+	free_bucket_desc = first; 
 }
 
+/*
+ *	功能: 分配动态内存
+ *	参数: len: 请求内存块的长度
+ *  返回值: 指向被分配内存指针，如果失败则返回NULL
+ */ 
 void *malloc(unsigned int len)
 {
 	struct _bucket_dir	*bdir;
@@ -124,25 +137,28 @@ void *malloc(unsigned int len)
 	 * First we search the bucket_dir to find the right bucket change
 	 * for this request.
 	 */
-	for (bdir = bucket_dir; bdir->size; bdir++)
+	for (bdir = bucket_dir; bdir->size; bdir++) //搜索存储桶目录来寻找适合请求的桶大小
 		if (bdir->size >= len)
 			break;
-	if (!bdir->size) {
+			
+	if (!bdir->size) {						   //死机
 		printk("malloc called with impossibly large argument (%d)\n",
 			len);
 		panic("malloc: bad arg");
 	}
+	
 	/*
 	 * Now we search for a bucket descriptor which has free space
 	 */
-	cli();	/* Avoid race conditions */
-	for (bdesc = bdir->chain; bdesc; bdesc = bdesc->next) 
+	cli();	/* Avoid race conditions */        //关中断
+	
+	for (bdesc = bdir->chain; bdesc; bdesc = bdesc->next) //搜索对应桶目录项中描述符链表，查找具有空闲空间的桶描述符。
 		if (bdesc->freeptr)
 			break;
 	/*
 	 * If we didn't find a bucket with free space, then we'll 
 	 * allocate a new one.
-	 */
+	 */ //如果没有找到
 	if (!bdesc) {
 		char		*cp;
 		int		i;

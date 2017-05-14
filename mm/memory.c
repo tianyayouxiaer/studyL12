@@ -75,36 +75,44 @@ void free_page(unsigned long addr)
  * This function frees a continuos block of page tables, as needed
  * by 'exit()'. As does copy_page_tables(), this handles only 4Mb blocks.
  */
+ /*
+ *	功能: 释放连续块，块必须4M对齐	  
+ *  返回: 
+ *	参数:
+ */
 int free_page_tables(unsigned long from,unsigned long size)
 {
 	unsigned long *pg_table;
 	unsigned long * dir, nr;
 
-	if (from & 0x3fffff)
+	if (from & 0x3fffff)	//4									//4M对齐检测
 		panic("free_page_tables called with wrong alignment");
-	if (!from)
+	if (!from)													//0地址是内核驻留地址，不允许释放，内核和缓冲为前4M 
 		panic("Trying to free up swapper memory space");
-	size = (size + 0x3fffff) >> 22;
-	dir = (unsigned long *) ((from>>20) & 0xffc); /* _pg_dir = 0 */
+		
+	size = (size + 0x3fffff) >> 22;  							//如果是4.1M，size取整为2
+	dir = (unsigned long *) ((from>>20) & 0xffc); /* _pg_dir = 0 */ //页目录起始地址
+	
 	for ( ; size-->0 ; dir++) {
-		if (!(1 & *dir))
+		if (!(1 & *dir))						//如果页目录项未使用，跳过
 			continue;
-		pg_table = (unsigned long *) (0xfffff000 & *dir);
-		for (nr=0 ; nr<1024 ; nr++) {
-			if (*pg_table) {
-				if (1 & *pg_table)
-					free_page(0xfffff000 & *pg_table);
+			
+		pg_table = (unsigned long *) (0xfffff000 & *dir);	//取页表项
+		for (nr=0 ; nr<1024 ; nr++) {						//每个页表项有1024个物理页
+			if (*pg_table) {								//所指页表项内容不为0
+				if (1 & *pg_table)							//位0等于1表示物理页有效
+					free_page(0xfffff000 & *pg_table);		//释放物理页
 				else
-					swap_free(*pg_table >> 1);
-				*pg_table = 0;
+					swap_free(*pg_table >> 1);				//释放交换设备中对应项
+				*pg_table = 0;								//页表项内容清0
 			}
 			pg_table++;
 		}
-		free_page(0xfffff000 & *dir);
-		*dir = 0;
+		free_page(0xfffff000 & *dir);						//释放该页表所占内存页面					
+		*dir = 0;											//页目录项内容清零
 	}
-	invalidate();
-	return 0;
+	invalidate();											//刷新高速缓存 
+	return 0;												//返回0表示操作成功
 }
 
 /*
@@ -146,7 +154,7 @@ int copy_page_tables(unsigned long from,unsigned long to,long size)
 	size = ((unsigned) (size+0x3fffff)) >> 22;//要复制的页表个数
 
 	for( ; size-->0 ; from_dir++,to_dir++) {
-		if (1 & *to_dir) //也表项的最低位表示存在位
+		if (1 & *to_dir) //页表项的最低位表示存在位
 			panic("copy_page_tables: already exist");
 		if (!(1 & *from_dir))
 			continue;
@@ -191,26 +199,33 @@ int copy_page_tables(unsigned long from,unsigned long to,long size)
  * out of memory (either when trying to access page-table or
  * page.)
  */
+  /*
+ *	功能: 把一内存页面映射到指定的线性地址处，把线性地址空间指定地址address	  
+ *  返回: 页面物理地址
+ *	参数: page:内存中某一页面的指针，address是线性地址
+ */
 static unsigned long put_page(unsigned long page,unsigned long address)
 {
 	unsigned long tmp, *page_table;
 
 /* NOTE !!! This uses the fact that _pg_dir=0 */
 
-	if (page < LOW_MEM || page >= HIGH_MEMORY)
+	if (page < LOW_MEM || page >= HIGH_MEMORY) 				//物理内存低于1M或者超出实际含有内存高端
 		printk("Trying to put page %p at %p\n",page,address);
-	if (mem_map[(page-LOW_MEM)>>12] != 1)
-		printk("mem_map disagrees with %p at %p\n",page,address);
-	page_table = (unsigned long *) ((address>>20) & 0xffc);
-	if ((*page_table)&1)
-		page_table = (unsigned long *) (0xfffff000 & *page_table);
+		
+	if (mem_map[(page-LOW_MEM)>>12] != 1)					//检查page页面是不是被申请的页面
+		printk("mem_map disagrees with %p at %p\n",	page,address);
+		
+	page_table = (unsigned long *) ((address>>20) & 0xffc);	//根据线性地址找到页目录表中页目录项指针
+	if ((*page_table)&1)									//目录项有效，即指定的页表在内存中
+		page_table = (unsigned long *) (0xfffff000 & *page_table);//页表地址
 	else {
-		if (!(tmp=get_free_page()))
+		if (!(tmp=get_free_page()))							//申请空闲页给页表使用
 			return 0;
-		*page_table = tmp | 7;
+		*page_table = tmp | 7;								//设置相关页目录项
 		page_table = (unsigned long *) tmp;
 	}
-	page_table[(address>>12) & 0x3ff] = page | 7;
+	page_table[(address>>12) & 0x3ff] = page | 7;//设置相关页表项
 /* no need for invalidate */
 	return page;
 }
