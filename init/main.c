@@ -140,6 +140,7 @@ void main(void)		/* This really IS void, no error here. */
 	memory_end &= 0xfffff000;
 	if (memory_end > 16*1024*1024)
 		memory_end = 16*1024*1024;
+		
 	if (memory_end > 12*1024*1024) 
 		buffer_memory_end = 4*1024*1024;
 	else if (memory_end > 6*1024*1024)

@@ -169,9 +169,14 @@ int swap_out(void)
  * Get physical address of first (actually last :-) free page, and mark it
  * used. If no free pages left, return 0.
  */
+/*
+ *	功能: 获取最后一个空闲的物理页面，如果没有空闲页，则执行交换处理，并重新查找	  
+ *  返回: 返回空闲物理页面地址
+ *	参数:
+ */
 unsigned long get_free_page(void)
 {
-register unsigned long __res asm("ax");
+register unsigned long __res asm("ax"); //定义保存在eax寄存器中的局部寄存器变量，目的是为了高效访问和操作
 
 repeat:
 	__asm__("std ; repne ; scasb\n\t"
