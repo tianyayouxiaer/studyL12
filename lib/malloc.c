@@ -158,33 +158,38 @@ void *malloc(unsigned int len)
 	/*
 	 * If we didn't find a bucket with free space, then we'll 
 	 * allocate a new one.
-	 */ //如果没有找到
+	 */ 
+	 //如果没有找到，则要分配一页桶描述符
 	if (!bdesc) {
 		char		*cp;
 		int		i;
 
 		if (!free_bucket_desc)	
-			init_bucket_desc();
-		bdesc = free_bucket_desc;
-		free_bucket_desc = bdesc->next;
-		bdesc->refcnt = 0;
-		bdesc->bucket_size = bdir->size;
-		bdesc->page = bdesc->freeptr = (void *) cp = get_free_page();
+			init_bucket_desc();//申请一页描述符，建立空闲桶描述符链表，并让free_bucket_desc指向第一个空闲桶描述符
+			
+		bdesc = free_bucket_desc;//指向空闲桶
+		free_bucket_desc = bdesc->next;//空闲桶指向下一个描述符
+		bdesc->refcnt = 0;//清空应用计数
+		bdesc->bucket_size = bdir->size; //桶空间大小等于桶目录指定的大小
+		bdesc->page = bdesc->freeptr = (void *) cp = get_free_page();//申请一页内存，用于存储数据，并让空闲桶的描述符等于该页的物理地址
 		if (!cp)
 			panic("Out of memory in kernel malloc()");
+			
 		/* Set up the chain of free objects */
 		for (i=PAGE_SIZE/bdir->size; i > 1; i--) {
 			*((char **) cp) = cp + bdir->size;
 			cp += bdir->size;
-		}
-		*((char **) cp) = 0;
-		bdesc->next = bdir->chain; /* OK, link it in! */
+		} //物理地址
+		
+		*((char **) cp) = 0; //最后为NULL
+		bdesc->next = bdir->chain; /* OK, link it in! */ //向头上插入
 		bdir->chain = bdesc;
 	}
-	retval = (void *) bdesc->freeptr;
-	bdesc->freeptr = *((void **) retval);
-	bdesc->refcnt++;
-	sti();	/* OK, we're safe again */
+	
+	retval = (void *) bdesc->freeptr;//返回指针即等于该描述符对应页面的当前空闲指针
+	bdesc->freeptr = *((void **) retval);//调整该空闲空间指针指向下一个空闲对象；
+	bdesc->refcnt++;//该描述符对应页面中对象引用计数加一
+	sti();	/* OK, we're safe again */ //开中断
 	return(retval);
 }
 
