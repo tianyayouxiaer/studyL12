@@ -166,15 +166,19 @@ void *malloc(unsigned int len)
 
 		if (!free_bucket_desc)	
 			init_bucket_desc();//ÉêÇëÒ»Ò³ÃèÊö·û£¬½¨Á¢¿ÕÏĞÍ°ÃèÊö·ûÁ´±í£¬²¢ÈÃfree_bucket_descÖ¸ÏòµÚÒ»¸ö¿ÕÏĞÍ°ÃèÊö·û
-			
-		bdesc = free_bucket_desc;//Ö¸Ïò¿ÕÏĞÍ°
+
+		/* ´Ó¿ÕÏĞµÄÁ´±íÉÏÇøÒ»¸öÍ°ÃèÊö·û£¬Èç¹û¿ÕÏĞÁ´±íÃ»ÓĞ¿ÉÓÃµÄÍ°ÃèÊö·û£¬ÔòÔÙÉêÇëÒ»Ò³Í°ÃèÊö·û */
+		bdesc = free_bucket_desc;//Ö¸Ïò¿ÕÏĞÍ°(È¡Ò»¸ö)
 		free_bucket_desc = bdesc->next;//¿ÕÏĞÍ°Ö¸ÏòÏÂÒ»¸öÃèÊö·û
+
+		/* ³õÊ¼»¯ÒªÊ¹ÓÃµÄÍ°ÃèÊö·û */
 		bdesc->refcnt = 0;//Çå¿ÕÓ¦ÓÃ¼ÆÊı
 		bdesc->bucket_size = bdir->size; //Í°¿Õ¼ä´óĞ¡µÈÓÚÍ°Ä¿Â¼Ö¸¶¨µÄ´óĞ¡
 		bdesc->page = bdesc->freeptr = (void *) cp = get_free_page();//ÉêÇëÒ»Ò³ÄÚ´æ£¬ÓÃÓÚ´æ´¢Êı¾İ£¬²¢ÈÃ¿ÕÏĞÍ°µÄÃèÊö·ûµÈÓÚ¸ÃÒ³µÄÎïÀíµØÖ·
 		if (!cp)
 			panic("Out of memory in kernel malloc()");
-			
+
+		/* ³õÊ¼»¯ÄÚ´æÒ³¿é£¬µØÖ·+Êı¾İ¿é */
 		/* Set up the chain of free objects */
 		for (i=PAGE_SIZE/bdir->size; i > 1; i--) {
 			*((char **) cp) = cp + bdir->size;
@@ -182,6 +186,7 @@ void *malloc(unsigned int len)
 		} //ÎïÀíµØÖ·
 		
 		*((char **) cp) = 0; //×îºóÎªNULL
+		
 		bdesc->next = bdir->chain; /* OK, link it in! */ //ÏòÍ·ÉÏ²åÈë
 		bdir->chain = bdesc;
 	}
@@ -200,6 +205,11 @@ void *malloc(unsigned int len)
  * 
  * We will #define a macro so that "free(x)" is becomes "free_s(x, 0)"
  */
+ /*
+ *	¹¦ÄÜ: ·ÖÅäÊÍ·ÅÄÚ´æ
+ *	²ÎÊı: obj: ¶ÔÓ¦¶ÔÏóµÄÖ¸Õë
+ *		  size: ´óĞ¡
+ */ 
 void free_s(void *obj, int size)
 {
 	void		*page;
@@ -207,47 +217,56 @@ void free_s(void *obj, int size)
 	struct bucket_desc	*bdesc, *prev;
 
 	/* Calculate what page this object lives in */
-	page = (void *)  ((unsigned long) obj & 0xfffff000);
+	page = (void *)  ((unsigned long) obj & 0xfffff000);//¼ÆËã¸ÃÍ°ËùÔÚµÄÒ³Ãæ
+	
 	/* Now search the buckets looking for that page */
-	for (bdir = bucket_dir; bdir->size; bdir++) {
+	for (bdir = bucket_dir; bdir->size; bdir++) { //ËÑË÷Í°Ä¿Â¼
 		prev = 0;
 		/* If size is zero then this conditional is always false */
 		if (bdir->size < size)
-			continue;
-		for (bdesc = bdir->chain; bdesc; bdesc = bdesc->next) {
-			if (bdesc->page == page) 
+			continue;  //ËÑË÷ÊÍ·ÅÒ³ÃæËùÔÚµÄÍ°Ä¿Â¼
+			
+		for (bdesc = bdir->chain; bdesc; bdesc = bdesc->next) { //ËÑË÷¶ÔÓ¦Ä¿Â¼ÏîÖĞÁ´½ÓËùÓĞÃèÊö·û£¬²éÕÒ¶ÔÓ¦Ò³Ãæ¡£
+			if (bdesc->page == page) //Èç¹ûÄ³ÃèÊö·ûÒ³ÃæÖ¸ÕëµÈÓÚpageÔò±íÊ¾ÕÒµ½ÁËÏàÓ¦µÄÃèÊö·û£
 				goto found;
-			prev = bdesc;
+			prev = bdesc; // prevÎªËÑË÷µ½ÃèÊö·ûÇ°Ò»¸öÃèÊö·û
 		}
 	}
-	panic("Bad address passed to kernel free_s()");
+	
+	panic("Bad address passed to kernel free_s()"); //ËÀ»ú
+	
 found:
-	cli(); /* To avoid race conditions */
-	*((void **)obj) = bdesc->freeptr;
+	cli(); /* To avoid race conditions */ //¹ØÖĞ¶Ï
+	*((void **)obj) = bdesc->freeptr; //²åÈëµ½¿ÕÏĞÁ´±íÖĞ
 	bdesc->freeptr = obj;
-	bdesc->refcnt--;
-	if (bdesc->refcnt == 0) {
+	
+	bdesc->refcnt--; //ÃèÊö·û¶ÔÏóÒıÓÃ¼ÆÊı¼õ1
+	if (bdesc->refcnt == 0) { //Èç¹û¸ÃÃèÊö·ûÒıÓÃ¼ÆÊıÎª0£¬ÔòÊÍ·Å¶ÔÓ¦µÄÄÚ´æÒ³ÃæºÍ¸ÃÍ°ÃèÊö·û
 		/*
 		 * We need to make sure that prev is still accurate.  It
 		 * may not be, if someone rudely interrupted us....
 		 */
 		if ((prev && (prev->next != bdesc)) ||
-		    (!prev && (bdir->chain != bdesc)))
-			for (prev = bdir->chain; prev; prev = prev->next)
+		    (!prev && (bdir->chain != bdesc)))//prevµÄnext²»Îªbdesc»òÕßprev²»´æÔÚ£¬µ«ÊÇbdescÓÖ²»ÊÇÍ·½Úµã
+		    
+			for (prev = bdir->chain; prev; prev = prev->next) //ÖØĞÂÕÒµ½bdescµÄprev
 				if (prev->next == bdesc)
 					break;
+					
 		if (prev)
-			prev->next = bdesc->next;
+			prev->next = bdesc->next; //É¾³ıÁËbdescÃèÊö·û
 		else {
-			if (bdir->chain != bdesc)
+			if (bdir->chain != bdesc) //bdescÎªÍ·½Úµã
 				panic("malloc bucket chains corrupted");
 			bdir->chain = bdesc->next;
 		}
-		free_page((unsigned long) bdesc->page);
-		bdesc->next = free_bucket_desc;
+		
+		free_page((unsigned long) bdesc->page); //ÊÍ·ÅÎïÀíÒ³
+		bdesc->next = free_bucket_desc; //bdesc²åÈë¿ÕÏĞÃèÊö·ûÁ´±íÖĞ
 		free_bucket_desc = bdesc;
 	}
-	sti();
+	
+	sti();//¿ªÖĞ¶Ï£¬·µ»Ø
 	return;
 }
 

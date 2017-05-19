@@ -199,7 +199,7 @@ int copy_page_tables(unsigned long from,unsigned long to,long size)
  * out of memory (either when trying to access page-table or
  * page.)
  */
-  /*
+/*
  *	功能: 把一内存页面映射到指定的线性地址处，把线性地址空间指定地址address	  
  *  返回: 页面物理地址
  *	参数: page:内存中某一页面的指针，address是线性地址
@@ -286,11 +286,16 @@ void un_wp_page(unsigned long * table_entry)
  *
  * If it's in code space we exit with a segment error.
  */
+/*
+ *	功能: 写共享页面时，COW
+ *	参数: error_code:进程写保护页由cpu产生异常而自动生成，错误类型
+ *  address: 异常页面线性地址
+ */
 void do_wp_page(unsigned long error_code,unsigned long address)
 {
-	if (address < TASK_SIZE)
+	if (address < TASK_SIZE)//64M，页异常页面位置在内核或者任务0和任务1处的线性地址范围呢
 		printk("\n\rBAD! KERNEL MEMORY WP-ERR!\n\r");
-	if (address - current->start_code > TASK_SIZE) {
+	if (address - current->start_code > TASK_SIZE) { //current->start_code 当前进程起始地址
 		printk("Bad things happen: page error in do_wp_page\n\r");
 		do_exit(SIGSEGV);
 	}
@@ -518,10 +523,12 @@ void show_mem(void)
 		if (!mem_map[i])
 			free++;
 		else
-			shared += mem_map[i]-1;
+			shared += mem_map[i]-1; //计算共享的
 	}
+	
 	printk("%d free pages of %d\n\r",free,total);
 	printk("%d pages shared\n\r",shared);
+	
 	k = 0;
 	for(i=4 ; i<1024 ;) {
 		if (1&pg_dir[i]) {
@@ -541,6 +548,7 @@ void show_mem(void)
 					else
 						k++,free++;
 		}
+		
 		i++;
 		if (!(i&15) && k) {
 			k++,free++;	/* one page/process for task_struct */
@@ -548,5 +556,6 @@ void show_mem(void)
 			k = 0;
 		}
 	}
+	
 	printk("Memory found: %d (%d)\n\r",free-shared,total);
 }

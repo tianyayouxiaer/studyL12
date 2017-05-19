@@ -53,10 +53,10 @@ typedef unsigned int sigset_t;		/* 32 bits */
 #endif
 
 struct sigaction {
-	void (*sa_handler)(int);
-	sigset_t sa_mask;
-	int sa_flags;
-	void (*sa_restorer)(void);
+	void (*sa_handler)(int); //Ä³ĞÅºÅÖ¸¶¨Òª²ÉÈ¡µÄĞĞ¶¯
+	sigset_t sa_mask; //ĞÅºÅµÄÆÁ±ÎÂë£¬ÔÚĞÅºÅ³ÌĞòÖ´ĞĞÊ±½«×èÈû¶ÔÕâĞ©ĞÅºÅµÄ´¦Àí
+	int sa_flags;//¸Ä±äĞÅºÅ´¦Àí¹ı³ÌÖĞµÄĞÅºÅ¼¯£
+	void (*sa_restorer)(void);//ÇåÀíÓÃ»§Ì¬¶ÔÕ½
 };
 
 void (*signal(int _sig, void (*_func)(int)))(int);

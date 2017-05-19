@@ -414,6 +414,11 @@ int sys_nice(long increment)
 	return 0;
 }
 
+/*
+ *	功能: 
+ *	参数: error_code:进程写保护页由cpu产生异常而自动生成，错误类型
+ *  address: 异常页面线性地址
+ */
 void sched_init(void)
 {
 	int i;
@@ -421,6 +426,7 @@ void sched_init(void)
 
 	if (sizeof(struct sigaction) != 16)
 		panic("Struct sigaction MUST be 16 bytes");
+		
 	set_tss_desc(gdt+FIRST_TSS_ENTRY,&(init_task.task.tss));
 	set_ldt_desc(gdt+FIRST_LDT_ENTRY,&(init_task.task.ldt));
 	p = gdt+2+FIRST_TSS_ENTRY;
@@ -431,6 +437,7 @@ void sched_init(void)
 		p->a=p->b=0;
 		p++;
 	}
+	
 /* Clear NT, so that we won't have troubles with that later on */
 	__asm__("pushfl ; andl $0xffffbfff,(%esp) ; popfl");
 	ltr(0);
