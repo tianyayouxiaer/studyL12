@@ -18,6 +18,11 @@
 int sys_pause(void);
 int sys_close(int fd);
 
+ /*
+ *	功能: 释放进程，释放任务槽及任务数据结构所占用的内存
+ *  返回: 
+ *	参数:
+ */
 void release(struct task_struct * p)
 {
 	int i;
@@ -30,7 +35,7 @@ void release(struct task_struct * p)
 	}
 	for (i=1 ; i<NR_TASKS ; i++)
 		if (task[i]==p) {
-			task[i]=NULL;
+			task[i]=NULL;//置空该任务项			
 			/* Update links */
 			if (p->p_osptr)
 				p->p_osptr->p_ysptr = p->p_ysptr;
@@ -38,8 +43,8 @@ void release(struct task_struct * p)
 				p->p_ysptr->p_osptr = p->p_osptr;
 			else
 				p->p_pptr->p_cptr = p->p_osptr;
-			free_page((long)p);
-			schedule();
+			free_page((long)p);//并释放相关的内存页
+			schedule();//重新调度
 			return;
 		}
 	panic("trying to release non-existent task");
@@ -134,11 +139,16 @@ void audit_ptree()
 }
 #endif /* DEBUG_PROC_TREE */
 
+ /*
+ *	功能: 向指定的任务发送信号，权限为priv
+ *  返回: 
+ *	参数:
+ */
 static inline int send_sig(long sig,struct task_struct * p,int priv)
 {
 	if (!p)
 		return -EINVAL;
-	if (!priv && (current->euid!=p->euid) && !suser())
+	if (!priv && (current->euid!=p->euid) && !suser())//没有权限，进程有效用户标识不是指定进程的euid，非超级用户
 		return -EPERM;
 	if ((sig == SIGKILL) || (sig == SIGCONT)) {
 		if (p->state == TASK_STOPPED)
@@ -154,7 +164,7 @@ static inline int send_sig(long sig,struct task_struct * p,int priv)
 	if ((sig >= SIGSTOP) && (sig <= SIGTTOU)) 
 		p->signal &= ~(1<<(SIGCONT-1));
 	/* Actually deliver the signal */
-	p->signal |= (1<<(sig-1));
+	p->signal |= (1<<(sig-1));//进程位图中添加信号
 	return 0;
 }
 
@@ -178,7 +188,7 @@ int kill_pg(int pgrp, int sig, int priv)
 		return -EINVAL;
  	for (p = &LAST_TASK ; p > &FIRST_TASK ; --p)
 		if ((*p)->pgrp == pgrp) {
-			if (sig && (err = send_sig(sig,*p,priv)))
+			if (sig && (err = send_sig(sig,*p,priv)))//强制发送信号
 				retval = err;
 			else
 				found++;
@@ -201,6 +211,11 @@ int kill_proc(int pid, int sig, int priv)
 /*
  * POSIX specifies that kill(-1,sig) is unspecified, but what we have
  * is probably wrong.  Should make it like BSD or SYSV.
+ */
+ /*
+ *	功能: 用于向进程或进程组发送任何指定的信号
+ *  返回: 
+ *	参数:
  */
 int sys_kill(int pid,int sig)
 {
@@ -258,7 +273,11 @@ static int has_stopped_jobs(int pgrp)
 	}
 	return(0);
 }
-
+ /*
+ *	功能: 系统调用中断处理程序被调用
+ *  返回: 
+ *	参数:
+ */
 volatile void do_exit(long code)
 {
 	struct task_struct *p;
@@ -367,6 +386,11 @@ int sys_exit(int error_code)
 	do_exit((error_code&0xff)<<8);
 }
 
+ /*
+ *	功能: 挂起当前进程
+ *  返回: 
+ *	参数:
+ */
 int sys_waitpid(pid_t pid,unsigned long * stat_addr, int options)
 {
 	int flag;

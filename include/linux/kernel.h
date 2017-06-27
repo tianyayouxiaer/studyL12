@@ -29,5 +29,5 @@ extern int blankcount;
  * privs).  The implication of this is that you should do normal
  * permissions checks first, and check suser() last.
  */
-#define suser() (current->euid == 0)
+#define suser() (current->euid == 0)//用于判断是否为超级用户
 

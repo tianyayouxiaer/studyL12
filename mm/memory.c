@@ -53,6 +53,7 @@ unsigned char mem_map [ PAGING_PAGES ] = {0,}; //此种初始化啥意思
  * Free a page of memory at physical address 'addr'. Used by
  * 'free_page_tables()'
  */
+ 
  /*
  *	功能: 释放addr处的一页内存，释放的方式是放位图置位为0	  
  *  返回: 

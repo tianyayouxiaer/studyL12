@@ -21,6 +21,12 @@ extern void write_verify(unsigned long address);
 
 long last_pid=0;
 
+ /*
+ *	功能: 进程空间写前验证函数，对addr到addr+size这段进程空间以页为单位执行写操作前的检测操作，
+ *        若页面是只读的，则执行共享检验和cow
+ *  返回: 
+ *	参数:
+ */
 void verify_area(void * addr,int size)
 {
 	unsigned long start;
@@ -31,7 +37,7 @@ void verify_area(void * addr,int size)
 	start += get_base(current->ldt[2]);
 	while (size>0) {
 		size -= 4096;
-		write_verify(start);
+		write_verify(start);//若页面不可写，则复制页面
 		start += 4096;
 	}
 }

@@ -15,9 +15,9 @@ typedef unsigned int size_t;
 #define NULL ((void *) 0)
 #endif
 
-#define CLOCKS_PER_SEC 100
+#define CLOCKS_PER_SEC 100//系统时钟滴答
 
-typedef long clock_t;
+typedef long clock_t;//从进程开始系统经过的时钟滴答
 
 struct tm {
 	int tm_sec;
@@ -26,17 +26,17 @@ struct tm {
 	int tm_mday;
 	int tm_mon;
 	int tm_year;
-	int tm_wday;
-	int tm_yday;
-	int tm_isdst;
+	int tm_wday;//一周中的某天
+	int tm_yday;//一年中的某天
+	int tm_isdst;//夏令时标志
 };
 
 #define	__isleap(year)	\
   ((year) % 4 == 0 && ((year) % 100 != 0 || (year) % 1000 == 0))
   
-clock_t clock(void);
-time_t time(time_t * tp);
-double difftime(time_t time2, time_t time1);
+clock_t clock(void);//处理器使用的时间
+time_t time(time_t * tp);//取时间戳
+double difftime(time_t time2, time_t time1);//time2与
 time_t mktime(struct tm * tp);
 
 char * asctime(const struct tm * tp);

@@ -31,9 +31,9 @@
  *	30(%esp) - %oldss
  */
 
-SIG_CHLD	= 17
+SIG_CHLD	= 17//父进程发出，停止或终止子进程。
 
-EAX		= 0x00
+EAX		= 0x00//堆栈中各个寄存器的偏移位置
 EBX		= 0x04
 ECX		= 0x08
 EDX		= 0x0C
@@ -44,11 +44,11 @@ DS		= 0x1C
 EIP		= 0x20
 CS		= 0x24
 EFLAGS		= 0x28
-OLDESP		= 0x2C
+OLDESP		= 0x2C //当有特权级变化时
 OLDSS		= 0x30
 
-state	= 0		# these are offsets into the task-struct.
-counter	= 4
+state	= 0		# these are offsets into the task-struct.//进程状态
+counter	= 4 //时间片
 priority = 8
 signal	= 12
 sigaction = 16		# MUST be 16 (=len of sigaction)
@@ -60,7 +60,7 @@ sa_mask = 4
 sa_flags = 8
 sa_restorer = 12
 
-nr_system_calls = 82
+nr_system_calls = 82//系统调用总数
 
 ENOSYS = 38
 
@@ -72,47 +72,47 @@ ENOSYS = 38
 .globl _hd_interrupt,_floppy_interrupt,_parallel_interrupt
 .globl _device_not_available, _coprocessor_error
 
-.align 2
-bad_sys_call:
+.align 2 //内存4字节对齐
+bad_sys_call://错误系统调用号从这里返回
 	pushl $-ENOSYS
 	jmp ret_from_sys_call
 .align 2
-reschedule:
-	pushl $ret_from_sys_call
+reschedule://重新执行调度程序人口
+	pushl $ret_from_sys_call//ret_from_sys_call地址入栈
 	jmp _schedule
 .align 2
-_system_call:
+_system_call://int80 系统调用入口点
 	push %ds
 	push %es
 	push %fs
-	pushl %eax		# save the orig_eax
+	pushl %eax		# save the orig_eax//eax存放的是系统调用号
 	pushl %edx		
 	pushl %ecx		# push %ebx,%ecx,%edx as parameters
 	pushl %ebx		# to the system call
 	movl $0x10,%edx		# set up ds,es to kernel space
-	mov %dx,%ds
+	mov %dx,%ds //ds，es指向内核数据段
 	mov %dx,%es
 	movl $0x17,%edx		# fs points to local data space
 	mov %dx,%fs
 	cmpl _NR_syscalls,%eax
 	jae bad_sys_call
-	call _sys_call_table(,%eax,4)
-	pushl %eax
+	call _sys_call_table(,%eax,4)//调用地址=_sys_call_table+%eax*4
+	pushl %eax//系统调用返回值入栈
 2:
-	movl _current,%eax
-	cmpl $0,state(%eax)		# state
+	movl _current,%eax//取当前任务数据结构地址->eax
+	cmpl $0,state(%eax)		# state//查看当前任务运行状态，如果不在就绪态就执行调度程序
 	jne reschedule
-	cmpl $0,counter(%eax)		# counter
+	cmpl $0,counter(%eax)		# counter//如果该任务在就绪态，但时间片用完，也执行调度程序
 	je reschedule
-ret_from_sys_call:
-	movl _current,%eax
+ret_from_sys_call://从系统调用返回后，对信号量进行识别和处理
+	movl _current,%eax //task0不必对其进行信号量方面处理，直接返回
 	cmpl _task,%eax			# task[0] cannot have signals
 	je 3f
-	cmpw $0x0f,CS(%esp)		# was old code segment supervisor ?
+	cmpw $0x0f,CS(%esp)		# was old code segment supervisor ?//内核中任务直接退出中断，否则进行信号量处理
 	jne 3f
-	cmpw $0x17,OLDSS(%esp)		# was stack segment = 0x17 ?
+	cmpw $0x17,OLDSS(%esp)		# was stack segment = 0x17 ?//原堆栈不在用户数据段中，则也退出
 	jne 3f
-	movl signal(%eax),%ebx
+	movl signal(%eax),%ebx//
 	movl blocked(%eax),%ecx
 	notl %ecx
 	andl %ebx,%ecx

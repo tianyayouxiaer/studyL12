@@ -1,9 +1,9 @@
 #ifndef _SCHED_H
 #define _SCHED_H
 
-#define HZ 100
+#define HZ 100 //系统滴答时钟频率，10ms
 
-#define NR_TASKS	64
+#define NR_TASKS	64 //系统中同时最多进程数
 #define TASK_SIZE	0x04000000
 #define LIBRARY_SIZE	0x00400000
 
@@ -28,8 +28,8 @@
 #define CT_TO_SECS(x)	((x) / HZ)
 #define CT_TO_USECS(x)	(((x) % HZ) * 1000000/HZ)
 
-#define FIRST_TASK task[0]
-#define LAST_TASK task[NR_TASKS-1]
+#define FIRST_TASK task[0] //任务0
+#define LAST_TASK task[NR_TASKS-1]//任务数组最后一项任务
 
 #include <linux/head.h>
 #include <linux/fs.h>
@@ -39,10 +39,11 @@
 #include <sys/resource.h>
 #include <signal.h>
 
-#if (NR_OPEN > 32)
+#if (NR_OPEN > 32)//打开文件数
 #error "Currently the close-on-exec-flags and select masks are in one long, max 32 files/proc"
 #endif
 
+/* 进程运行可能存在的状态 */
 #define TASK_RUNNING		0
 #define TASK_INTERRUPTIBLE	1
 #define TASK_UNINTERRUPTIBLE	2
@@ -75,6 +76,7 @@ struct i387_struct {
 	long	st_space[20];	/* 8*10 bytes for each FP-reg = 80 bytes */
 };
 
+/* 任务状态段数据结构 */
 struct tss_struct {
 	long	back_link;	/* 16 high bits zero */
 	long	esp0;
@@ -102,45 +104,46 @@ struct tss_struct {
 	struct i387_struct i387;
 };
 
+/* 进程描述符 */
 struct task_struct {
 /* these are hardcoded - don't touch */
-	long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
-	long counter;
-	long priority;
-	long signal;
-	struct sigaction sigaction[32];
-	long blocked;	/* bitmap of masked signals */
-/* various fields */
-	int exit_code;
-	unsigned long start_code,end_code,end_data,brk,start_stack;
-	long pid,pgrp,session,leader;
+	long state;	/* -1 unrunnable, 0 runnable, >0 stopped *///进程运行状态
+	long counter;//时间片
+	long priority;//优先级；任务开始运行时counter = priority 
+	long signal; //信号；是位图，每个bit代表一种信号，信号值=位偏移值+1
+	struct sigaction sigaction[32];//信号执行属性结构
+	long blocked;	/* bitmap of masked signals *///进程信号屏蔽码(对应信号位图)
+/* various fields 变量域 */
+	int exit_code;//进程退出码，父进程会取
+	unsigned long start_code,end_code,end_data,brk,start_stack;//代码段地址，代码段长度，代码段长度+数据段长度，总长度，堆栈段地址
+	long pid,pgrp,session,leader;//进程号，进程组号，会话号，会话首领
 	int	groups[NGROUPS];
 	/* 
 	 * pointers to parent process, youngest child, younger sibling,
 	 * older sibling, respectively.  (p->father can be replaced with 
 	 * p->p_pptr->pid)
 	 */
-	struct task_struct	*p_pptr, *p_cptr, *p_ysptr, *p_osptr;
-	unsigned short uid,euid,suid;
-	unsigned short gid,egid,sgid;
-	unsigned long timeout,alarm;
-	long utime,stime,cutime,cstime,start_time;
+	struct task_struct	*p_pptr, *p_cptr, *p_ysptr, *p_osptr;//指向父进程指针，子进程指针，兄弟进程
+	unsigned short uid,euid,suid;//用户id，有效用户id，保存的用户id
+	unsigned short gid,egid,sgid;//组id，有效组id，保存的组id
+	unsigned long timeout,alarm;//报警定时值
+	long utime,stime,cutime,cstime,start_time;//用户态时间，系统态时间，子进程用户态时间，子进程系统态时间，进程开始运行时刻
 	struct rlimit rlim[RLIM_NLIMITS]; 
 	unsigned int flags;	/* per process flags, defined below */
-	unsigned short used_math;
-/* file system info */
-	int tty;		/* -1 if no tty, so it must be signed */
-	unsigned short umask;
-	struct m_inode * pwd;
-	struct m_inode * root;
-	struct m_inode * executable;
+	unsigned short used_math;//是否使用数字协处理器
+/* file system info 文件系统域 */
+	int tty;		/* -1 if no tty, so it must be signed *///进程使用tty的子设备，-1标识没有使用
+	unsigned short umask;//文件创建属性屏蔽位
+	struct m_inode * pwd;//当前工作目录i节点结构
+	struct m_inode * root;//根目录i节点结构
+	struct m_inode * executable;//执行文件i节点结构
 	struct m_inode * library;
-	unsigned long close_on_exec;
-	struct file * filp[NR_OPEN];
+	unsigned long close_on_exec;//执行时关闭文件句柄位图标志
+	struct file * filp[NR_OPEN];//进程使用的文件表结构
 /* ldt for this task 0 - zero 1 - cs 2 - ds&ss */
-	struct desc_struct ldt[3];
+	struct desc_struct ldt[3];//本任务的局部描述符，0空，1代码段，2数据段和堆栈段
 /* tss for this task */
-	struct tss_struct tss;
+	struct tss_struct tss;//本进程的任务状态段信息结构
 };
 
 /*
