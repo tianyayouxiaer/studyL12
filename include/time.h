@@ -36,14 +36,14 @@ struct tm {
   
 clock_t clock(void);//处理器使用的时间
 time_t time(time_t * tp);//取时间戳
-double difftime(time_t time2, time_t time1);//time2与
-time_t mktime(struct tm * tp);
+double difftime(time_t time2, time_t time1);//time2 - time1
+time_t mktime(struct tm * tp);//tm time change to calendar 
 
-char * asctime(const struct tm * tp);
-char * ctime(const time_t * tp);
-struct tm * gmtime(const time_t *tp);
-struct tm *localtime(const time_t * tp);
-size_t strftime(char * s, size_t smax, const char * fmt, const struct tm * tp);
-void tzset(void);
+char * asctime(const struct tm * tp);//tm time change to string
+char * ctime(const time_t * tp);//tm calendar time change to string
+struct tm * gmtime(const time_t *tp);//tm calendar time change to tm
+struct tm *localtime(const time_t * tp);//tm calendar time change to tm with zone
+size_t strftime(char * s, size_t smax, const char * fmt, const struct tm * tp);//将tm时间转换为最大长度为smax,格式为fmt的字符串
+void tzset(void);//初始化时间转换信息，使用环境变量，TZ对zname进行初始化
 
 #endif
