@@ -20,9 +20,14 @@
 
 #include <signal.h>
 
+//取信号nr在信号位图中对应位的二进制数
+//信号5的位图位：1<<(5-1) = 16 = 0001 0000
 #define _S(nr) (1<<((nr)-1))
+
+//除了SIGKILL和SIGSTOP以外信号都可以阻塞，其它信号位图为1，这两位为0
 #define _BLOCKABLE (~(_S(SIGKILL) | _S(SIGSTOP)))
 
+//显示任务号nr的进程号、进程状态以及内核堆栈空闲字数
 void show_task(int nr,struct task_struct * p)
 {
 	int i,j = 4096-sizeof(struct task_struct);
@@ -30,7 +35,7 @@ void show_task(int nr,struct task_struct * p)
 	printk("%d: pid=%d, state=%d, father=%d, child=%d, ",nr,p->pid,
 		p->state, p->p_pptr->pid, p->p_cptr ? p->p_cptr->pid : -1);
 	i=0;
-	while (i<j && !((char *)(p+1))[i])
+	while (i<j && !((char *)(p+1))[i])//检测任务数据结构后等于0的字节数，即为堆栈空闲字节数
 		i++;
 	printk("%d/%d chars free in kstack\n\r",i,j);
 	printk("   PC=%08X.", *(1019 + (unsigned long *) p));
@@ -42,6 +47,7 @@ void show_task(int nr,struct task_struct * p)
 		printk("\n\r");
 }
 
+//显示系统中所有进程的信息
 void show_state(void)
 {
 	int i;
@@ -52,18 +58,23 @@ void show_state(void)
 			show_task(i,task[i]);
 }
 
-#define LATCH (1193180/HZ)
+#define LATCH (1193180/HZ) //定时芯片设置的值，使它输出100Hz
 
 extern void mem_use(void);
 
 extern int timer_interrupt(void);
 extern int system_call(void);
 
+
+//每个任务在内核态运行都有自己的内核态堆栈；
+//任务数据结构和内核态堆栈放在同一页中；
+//从堆栈段寄存器ss可以获得其数据段选择符
 union task_union {
 	struct task_struct task;
 	char stack[PAGE_SIZE];
 };
 
+//设置初始任务的数据
 static union task_union init_task = {INIT_TASK,};
 
 unsigned long volatile jiffies=0;
@@ -321,33 +332,45 @@ void add_timer(long jiffies, void (*fn)(void))
 	sti();
 }
 
+//cpl:时钟中断发生时正被执行的代码选择符中的特权级
+//0：表示中断发生时正在执行内核代码
+//1:表示中断发生时正在执行用户代码
+//
 void do_timer(long cpl)
 {
 	static int blanked = 0;
 
+	//屏幕
 	if (blankcount || !blankinterval) {
 		if (blanked)
-			unblank_screen();
+			unblank_screen();//亮屏
 		if (blankcount)
 			blankcount--;
 		blanked = 0;
 	} else if (!blanked) {
-		blank_screen();
+		blank_screen();//黑屏
 		blanked = 1;
 	}
+
+	//硬盘
 	if (hd_timeout)
 		if (!--hd_timeout)
-			hd_times_out();
+			hd_times_out();//硬盘超时处理
 
+	//扬声器
 	if (beepcount)
 		if (!--beepcount)
 			sysbeepstop();
 
+	//内核或者用户时间增加
 	if (cpl)
 		current->utime++;
 	else
 		current->stime++;
 
+	//如果定时器存在，则将链表第一个定时器的值减1；如果以及等于0，则调用相应的处理程序
+	//并去掉该定时器，next_timer（定时器链表头指针）指针指向下一个定时器；
+	//此处值得学习
 	if (next_timer) {
 		next_timer->jiffies--;
 		while (next_timer && next_timer->jiffies <= 0) {
@@ -359,12 +382,15 @@ void do_timer(long cpl)
 			(fn)();
 		}
 	}
+	//软盘定时程序
 	if (current_DOR & 0xf0)
 		do_floppy_timer();
+
+	//如果进程时间还没运行完，则退出；否则置当前任务运行计数为0
 	if ((--current->counter)>0) return;
 	current->counter=0;
-	if (!cpl) return;
-	schedule();
+	if (!cpl) return;//若时钟中断发生时，在内核中运行，则直接返回，没有依赖counter进行调度
+	schedule();//否则执行调度程序
 }
 
 int sys_alarm(long seconds)
@@ -415,20 +441,23 @@ int sys_nice(long increment)
 }
 
 /*
- *	功能: 
+ *	功能: 内核调度初始化程序
  *	参数: error_code:进程写保护页由cpu产生异常而自动生成，错误类型
  *  address: 异常页面线性地址
  */
 void sched_init(void)
 {
 	int i;
-	struct desc_struct * p;
+	struct desc_struct * p;//指向描述符表结构指针
 
 	if (sizeof(struct sigaction) != 16)
 		panic("Struct sigaction MUST be 16 bytes");
-		
-	set_tss_desc(gdt+FIRST_TSS_ENTRY,&(init_task.task.tss));
-	set_ldt_desc(gdt+FIRST_LDT_ENTRY,&(init_task.task.ldt));
+
+	//1、根据task0的配置参数在全局描述符表中初始化任务0的任务状态段描述符和局部数据描述符
+	set_tss_desc(gdt+FIRST_TSS_ENTRY, &(init_task.task.tss));
+	set_ldt_desc(gdt+FIRST_LDT_ENTRY, &(init_task.task.ldt));
+
+	//清空任务数组和描述符表项
 	p = gdt+2+FIRST_TSS_ENTRY;
 	for(i=1;i<NR_TASKS;i++) {
 		task[i] = NULL;
@@ -439,13 +468,18 @@ void sched_init(void)
 	}
 	
 /* Clear NT, so that we won't have troubles with that later on */
-	__asm__("pushfl ; andl $0xffffbfff,(%esp) ; popfl");
-	ltr(0);
-	lldt(0);
+	__asm__("pushfl ; andl $0xffffbfff,(%esp) ; popfl");//复位NT标志(嵌套调用)
+	ltr(0); //将任务0的tss段选择符加载到tr寄存器中
+	lldt(0);//将任务0的tldt段选择符加载到ldtr寄存器中
+
+	//2、初始化8253定时器
 	outb_p(0x36,0x43);		/* binary, mode 3, LSB/MSB, ch 0 */
 	outb_p(LATCH & 0xff , 0x40);	/* LSB */
 	outb(LATCH >> 8 , 0x40);	/* MSB */
+
+	//3、设置时钟中断处理程序，并修改中断控制器屏蔽码，运行时钟中断
 	set_intr_gate(0x20,&timer_interrupt);
 	outb(inb_p(0x21)&~0x01,0x21);
+	//设置系统调用中断门
 	set_system_gate(0x80,&system_call);
 }

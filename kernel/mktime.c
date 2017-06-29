@@ -38,6 +38,12 @@ static int month[12] = {
 	DAY*(31+29+31+30+31+30+31+31+30+31+30)
 };
 
+/*
+*  功能: 将日历时间tm转换成unix日历时间，作为开机时间 
+*  参数: tm各个字段在main.c中赋值，取自cmos
+*  返回: 
+*/
+//闰年的计算方法：如果y能被4整除且不能被100整除，或者能被400整除，则y是闰年
 long kernel_mktime(struct tm * tm)
 {
 	long res;

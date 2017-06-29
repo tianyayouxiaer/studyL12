@@ -126,7 +126,7 @@ struct task_struct {
 	struct task_struct	*p_pptr, *p_cptr, *p_ysptr, *p_osptr;//指向父进程指针，子进程指针，兄弟进程
 	unsigned short uid,euid,suid;//用户id，有效用户id，保存的用户id
 	unsigned short gid,egid,sgid;//组id，有效组id，保存的组id
-	unsigned long timeout,alarm;//报警定时值
+	unsigned long timeout,alarm;//内核超时定时值，报警定时值
 	long utime,stime,cutime,cstime,start_time;//用户态时间，系统态时间，子进程用户态时间，子进程系统态时间，进程开始运行时刻
 	struct rlimit rlim[RLIM_NLIMITS]; 
 	unsigned int flags;	/* per process flags, defined below */
@@ -156,6 +156,7 @@ struct task_struct {
  *  INIT_TASK is used to set up the first task table, touch at
  * your own risk!. Base=0, limit=0x9ffff (=640kB)
  */
+//第一个任务的信息
 #define INIT_TASK \
 /* state etc */	{ 0,15,15, \
 /* signals */	0,{{},},0, \
@@ -204,11 +205,14 @@ extern int in_group_p(gid_t grp);
  * Entry into gdt where to find first TSS. 0-nul, 1-cs, 2-ds, 3-syscall
  * 4-TSS0, 5-LDT0, 6-TSS1 etc ...
  */
-#define FIRST_TSS_ENTRY 4
+#define FIRST_TSS_ENTRY 4 
 #define FIRST_LDT_ENTRY (FIRST_TSS_ENTRY+1)
+//计算全局表中第n个任务的ldt段描述符的选择符值
 #define _TSS(n) ((((unsigned long) n)<<4)+(FIRST_TSS_ENTRY<<3))
 #define _LDT(n) ((((unsigned long) n)<<4)+(FIRST_LDT_ENTRY<<3))
+//把第n个任务tss段选择符加载到任务寄存器tr中
 #define ltr(n) __asm__("ltr %%ax"::"a" (_TSS(n)))
+//把第n个任务ldt段选择符加载到任务寄存器ldtr中
 #define lldt(n) __asm__("lldt %%ax"::"a" (_LDT(n)))
 #define str(n) \
 __asm__("str %%ax\n\t" \
