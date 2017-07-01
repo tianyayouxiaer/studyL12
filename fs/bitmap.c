@@ -28,14 +28,16 @@ __asm__ __volatile__("btrl %2,%3\n\tsetnb %%al": \
 "=a" (res):"0" (0),"r" (nr),"m" (*(addr))); \
 res;})
 
+//从addr开始的位图中寻找第1个是0的位，并将其addr的位偏移值返回
+//addr是缓冲块数据区地址，扫描寻找范围是1024字节，8192bit
 #define find_first_zero(addr) ({ \
 int __res; \
-__asm__("cld\n" \
+__asm__("cld\n" \//清方向位
 	"1:\tlodsl\n\t" \
-	"notl %%eax\n\t" \
-	"bsfl %%eax,%%edx\n\t" \
-	"je 2f\n\t" \
-	"addl %%edx,%%ecx\n\t" \
+	"notl %%eax\n\t" \//eax中每位取反
+	"bsfl %%eax,%%edx\n\t" \//从位0扫描eax中是1的第1个位
+	"je 2f\n\t" \//如果没有找到，则跳转到2f处
+	"addl %%edx,%%ecx\n\t" \//
 	"jmp 3f\n" \
 	"2:\taddl $32,%%ecx\n\t" \
 	"cmpl $8192,%%ecx\n\t" \
@@ -134,6 +136,8 @@ void free_inode(struct m_inode * inode)
 	memset(inode,0,sizeof(*inode));
 }
 
+//为设备dev建立一个新的i节点。初始化并返回该新i节点的指针
+//从内存i节点表中获取一个空闲i节点表项，并从i节点位图中到一个空闲i节点
 struct m_inode * new_inode(int dev)
 {
 	struct m_inode * inode;
@@ -141,10 +145,15 @@ struct m_inode * new_inode(int dev)
 	struct buffer_head * bh;
 	int i,j;
 
+	//首先熊内存i节点表中获取一个空闲i节点项
 	if (!(inode=get_empty_inode()))
 		return NULL;
+
+	//读取指定设备的超级块结构
 	if (!(sb = get_super(dev)))
 		panic("new_inode with unknown device");
+
+	//扫描超级块中8块i节点位图，寻找第1个0位，寻找空闲节点，获取放置该i节点的节点号。
 	j = 8192;
 	for (i=0 ; i<8 ; i++)
 		if (bh=sb->s_imap[i])
