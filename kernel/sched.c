@@ -100,6 +100,7 @@ struct {
  *  'math_state_restore()' saves the current math information in the
  * old math state array, and gets the new ones from the current task
  */
+ //当任务被调度交换以后，该函数用以保存原任务的协处理器状态
 void math_state_restore()
 {
 	if (last_task_used_math == current)
@@ -127,24 +128,32 @@ void math_state_restore()
  * tasks can run. It can not be killed, and it cannot sleep. The 'state'
  * information in task[0] is never used.
  */
+ //调度函数
 void schedule(void)
 {
 	int i,next,c;
 	struct task_struct ** p;
 
 /* check alarm, wake up any interruptible tasks that have got a signal */
-
+	//从任务数组最后一个任务开始，检测alarm，循环时跳出空指针
 	for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
 		if (*p) {
+			//如果设置过任务超时定时器timeout，并且已经超时，则复位超时定时器；
+			//如果任务处于可中断睡眠状态，则将其置为就绪态
 			if ((*p)->timeout && (*p)->timeout < jiffies) {
 				(*p)->timeout = 0;
 				if ((*p)->state == TASK_INTERRUPTIBLE)
 					(*p)->state = TASK_RUNNING;
 			}
+			
+			//如果设置过任务定时器alarm，并且已经过期，则在信号位图上置sigalm信号，即向任务发送sigalarm信号，
+			//然后清alarm。该信号的默认操作是终止进程。
 			if ((*p)->alarm && (*p)->alarm < jiffies) {
 				(*p)->signal |= (1<<(SIGALRM-1));
 				(*p)->alarm = 0;
 			}
+			
+			//如果信号位图中除被阻塞的信号还有其它信号，并且任务处于可中断状态，则置任务为就绪状态
 			if (((*p)->signal & ~(_BLOCKABLE & (*p)->blocked)) &&
 			(*p)->state==TASK_INTERRUPTIBLE)
 				(*p)->state=TASK_RUNNING;
@@ -157,21 +166,28 @@ void schedule(void)
 		next = 0;
 		i = NR_TASKS;
 		p = &task[NR_TASKS];
+		//就绪态任务counter值，哪一个大，哪一个运行时间不长，next就指向哪个任务
 		while (--i) {
 			if (!*--p)
 				continue;
 			if ((*p)->state == TASK_RUNNING && (*p)->counter > c)
 				c = (*p)->counter, next = i;
 		}
-		if (c) break;
+		if (c) break; 
+		//如果得到的counter值为0，即所有任务都执行完一遍，重新分配counter，然后再去比较
 		for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
 			if (*p)
+				//counter的计算方式为counter / 2 + priority
 				(*p)->counter = ((*p)->counter >> 1) +
 						(*p)->priority;
 	}
+	//把当前任务指针counter指向任务号为next任务，并切换到该任务运行
+	//next刚开始被初始化为0，若系统中没有其它任务运行，则next始终为0，
+	//系统会在空闲时去执行任务0，
 	switch_to(next);
 }
 
+//pause系统调用，转换当前的任务状态为可中断等待状态，并重新调度
 int sys_pause(void)
 {
 	current->state = TASK_INTERRUPTIBLE;
@@ -179,39 +195,54 @@ int sys_pause(void)
 	return 0;
 }
 
+//不可中断睡眠的任务需要利用wake_up函数来明确唤醒
+//可中断睡眠函数可以通过信号，任务超时等手段唤醒
 static inline void __sleep_on(struct task_struct **p, int state)
 {
 	struct task_struct *tmp;
 
 	if (!p)
 		return;
-	if (current == &(init_task.task))
+	if (current == &(init_task.task))//当前任务为任务0，则死机？
 		panic("task[0] trying to sleep");
+	//让tmp指向已经在等待队列上的任务
 	tmp = *p;
 	*p = current;
-	current->state = state;
+	current->state = state;//*p指向原当前任务，它现在是新的等待任务；tmp指向原等待任务
+	
 repeat:	schedule();
+	//只有当这个等待任务被唤醒时，程序才又会执行到这里，表示进程已经被明确的唤醒和执行。
+	//如果等待队列中还有等待任务，并且队列头指针*p所指向的任务不为当前任务时，说明在本任务插入
+	//等待队列后，还有任务插入等待队列。
+	//则将等待队列头设置为就绪态，而自己设置为不可中断等待状态，即自己要等待这些后续进入队列
+	//的任务被唤醒而执行时唤醒本任务。然后重新执行调度程序。
 	if (*p && *p != current) {
 		(**p).state = 0;
 		current->state = TASK_UNINTERRUPTIBLE;
 		goto repeat;
 	}
+	//执行到这里，说明本任务被真正唤醒执行，等待队列头即为本任务。然后我们把等待队列头
+	//指向在我们前面进入队列的任务
 	if (!*p)
 		printk("Warning: *P = NULL\n\r");
 	if (*p = tmp)
 		tmp->state=0;
 }
 
+//设置当前任务为可中断的等待状态，并放入头指针*p指定的等待队列中
 void interruptible_sleep_on(struct task_struct **p)
 {
 	__sleep_on(p,TASK_INTERRUPTIBLE);
 }
 
+//设置当前任务为可不中断的等待状态，并放入头指针*p指定的等待队列中
 void sleep_on(struct task_struct **p)
 {
 	__sleep_on(p,TASK_UNINTERRUPTIBLE);
 }
 
+//唤醒*p指向的任务（等待队列头指针）
+//由于新等待任务时插入在等待队列头指针处，因此唤醒的时最后进入等待队列的任务。
 void wake_up(struct task_struct **p)
 {
 	if (p && *p) {
@@ -291,6 +322,7 @@ void do_floppy_timer(void)
 	}
 }
 
+//最多可有64个定时器
 #define TIME_REQUESTS 64
 
 static struct timer_list {
@@ -306,24 +338,30 @@ void add_timer(long jiffies, void (*fn)(void))
 	if (!fn)
 		return;
 	cli();
+	
 	if (jiffies <= 0)
-		(fn)();
+		(fn)();//若定时值小于等于0，则立刻调用其处理程序，并且该定时器不加入链表中
 	else {
+		//从定时器数组中，找一个空闲的项
 		for (p = timer_list ; p < timer_list + TIME_REQUESTS ; p++)
 			if (!p->fn)
 				break;
+				
 		if (p >= timer_list + TIME_REQUESTS)
 			panic("No more time requests free");
 		p->fn = fn;
 		p->jiffies = jiffies;
-		p->next = next_timer;
+		p->next = next_timer;//next_timer执行最后一个插入的节点了
 		next_timer = p;
+
+		//链表项按定时值从小到大排序，
 		while (p->next && p->next->jiffies < p->jiffies) {
-			p->jiffies -= p->next->jiffies;
+			p->jiffies -= p->next->jiffies; //jiffies差值
 			fn = p->fn;
-			p->fn = p->next->fn;
+			p->fn = p->next->fn;//交换fn
 			p->next->fn = fn;
-			jiffies = p->jiffies;
+			
+			jiffies = p->jiffies;//交换jffies
 			p->jiffies = p->next->jiffies;
 			p->next->jiffies = jiffies;
 			p = p->next;
@@ -393,6 +431,7 @@ void do_timer(long cpl)
 	schedule();//否则执行调度程序
 }
 
+//设置报警定时时间值
 int sys_alarm(long seconds)
 {
 	int old = current->alarm;
@@ -403,36 +442,43 @@ int sys_alarm(long seconds)
 	return (old);
 }
 
+//获取当前进程pid
 int sys_getpid(void)
 {
 	return current->pid;
 }
 
+//获取父进程ppiid
 int sys_getppid(void)
 {
 	return current->p_pptr->pid;
 }
 
+//获取组进程ppiid
 int sys_getuid(void)
 {
 	return current->uid;
 }
 
+//获取有效的用户进程号
 int sys_geteuid(void)
 {
 	return current->euid;
 }
 
+//获取组号gid
 int sys_getgid(void)
 {
 	return current->gid;
 }
 
+/获取有效组id
 int sys_getegid(void)
 {
 	return current->egid;
 }
 
+//降低cpu的使用优先权
 int sys_nice(long increment)
 {
 	if (current->priority-increment>0)

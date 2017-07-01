@@ -228,11 +228,11 @@ __asm__("str %%ax\n\t" \
  */
 #define switch_to(n) {\
 struct {long a,b;} __tmp; \
-__asm__("cmpl %%ecx,_current\n\t" \
-	"je 1f\n\t" \
-	"movw %%dx,%1\n\t" \
-	"xchgl %%ecx,_current\n\t" \
-	"ljmp %0\n\t" \
+__asm__("cmpl %%ecx,_current\n\t" \ //判断任务n是当前任务
+	"je 1f\n\t" \ //是，退出
+	"movw %%dx,%1\n\t" \//将新任务TSS的16位选择符存入_tmp.b中
+	"xchgl %%ecx,_current\n\t" \//curent = task[n]；ecx = 被切换出的任务
+	"ljmp %0\n\t" \				//执行长跳转至*&_tmp，造成任务的切换
 	"cmpl %%ecx,_last_task_used_math\n\t" \
 	"jne 1f\n\t" \
 	"clts\n" \
@@ -281,8 +281,12 @@ __asm__("movb %3,%%dh\n\t" \
 	 "m" (*((addr)+7))); \
 __base;})
 
+//取局部描述符表中ldt所指段描述符中的基地址
 #define get_base(ldt) _get_base( ((char *)&(ldt)) )
 
+//取段选择符segment指定的描述符中的段限长
+//lsl - load segment limit
+//r 使用任意动态寄存器
 #define get_limit(segment) ({ \
 unsigned long __limit; \
 __asm__("lsll %1,%0\n\tincl %0":"=r" (__limit):"r" (segment)); \

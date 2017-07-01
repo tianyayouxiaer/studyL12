@@ -108,9 +108,9 @@ ret_from_sys_call://从系统调用返回后，对信号量进行识别和处理
 	movl _current,%eax //task0不必对其进行信号量方面处理，直接返回
 	cmpl _task,%eax			# task[0] cannot have signals
 	je 3f
-	cmpw $0x0f,CS(%esp)		# was old code segment supervisor ?//内核中任务直接退出中断，否则进行信号量处理
+	cmpw $0x0f,CS(%esp)		# was old code segment supervisor //内核中任务直接退出中断，否则进行信号量处理
 	jne 3f
-	cmpw $0x17,OLDSS(%esp)		# was stack segment = 0x17 ?//原堆栈不在用户数据段中，则也退出
+	cmpw $0x17,OLDSS(%esp)		# was stack segment = 0x17 //原堆栈不在用户数据段中，则也退出
 	jne 3f
 	movl signal(%eax),%ebx//
 	movl blocked(%eax),%ecx
@@ -185,24 +185,35 @@ _device_not_available:
 	popl %ebp
 	ret
 
+//时钟中断处理程序，中断频率为100Hz
+//jiffies加1
+//用当前特权级调用do_timer
 .align 2
 _timer_interrupt:
 	push %ds		# save ds,es and put kernel data space
 	push %es		# into them. %fs is used by _system_call
 	push %fs
-	pushl $-1		# fill in -1 for orig_eax
-	pushl %edx		# we save %eax,%ecx,%edx as gcc doesn't
+	pushl $-1		# fill in -1 for orig_eax //填-1，表示不是系统调用
+	
+	pushl %edx		# we save %eax,%ecx,%edx as gcc doesnt
 	pushl %ecx		# save those across function calls. %ebx
 	pushl %ebx		# is saved as we use that in ret_sys_call
 	pushl %eax
-	movl $0x10,%eax
+	
+	movl $0x10,%eax  //ds和es置为指向内核数据段，gdtr+0x10，排布情况是NULL，代码段描述符，数据段描述符，每个描述符8个字节
 	mov %ax,%ds
 	mov %ax,%es
-	movl $0x17,%eax
+	
+	movl $0x17,%eax //fs置为指向局部数据段，ldtr+0x ????
 	mov %ax,%fs
-	incl _jiffies
+	
+	incl _jiffies//jiffies加1
+
+	//结束时钟中断
 	movb $0x20,%al		# EOI to interrupt controller #1
 	outb %al,$0x20
+
+	//从堆栈中取出执行系统调用代码选择符中特权级
 	movl CS(%esp),%eax
 	andl $3,%eax		# %eax is CPL (0 or 3, 0=supervisor)
 	pushl %eax

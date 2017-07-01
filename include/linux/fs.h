@@ -70,19 +70,21 @@ void buffer_init(long buffer_end);
 
 typedef char buffer_block[BLOCK_SIZE];
 
+//缓冲块头结构，程序中常用bh缩写表示
 struct buffer_head {
-	char * b_data;			/* pointer to data block (1024 bytes) */
-	unsigned long b_blocknr;	/* block number */
-	unsigned short b_dev;		/* device (0 = free) */
-	unsigned char b_uptodate;
-	unsigned char b_dirt;		/* 0-clean,1-dirty */
-	unsigned char b_count;		/* users using this block */
-	unsigned char b_lock;		/* 0 - ok, 1 -locked */
-	struct task_struct * b_wait;
-	struct buffer_head * b_prev;
-	struct buffer_head * b_next;
-	struct buffer_head * b_prev_free;
-	struct buffer_head * b_next_free;
+	char * b_data;			    /* pointer to data block (1024 bytes) *///指针
+	unsigned long b_blocknr;	/* block number *///快号
+	unsigned short b_dev;		/* device (0 = free) *///数据源设备号
+	unsigned char b_uptodate; 	//更新标志，：表示数据是否已更新
+	unsigned char b_dirt;		/* 0-clean,1-dirty *///修改标志：0-未修改，1-已修改
+	unsigned char b_count;		/* users using this block *///使用的用户数
+	unsigned char b_lock;		/* 0 - ok, 1 -locked *///缓冲区是否被锁定
+	//缓冲区管理
+	struct task_struct * b_wait;//指向等待该缓冲区解锁任务
+	struct buffer_head * b_prev;//hash队列上前一块
+	struct buffer_head * b_next;//hash队列上后一块
+	struct buffer_head * b_prev_free;//空闲表上前一块
+	struct buffer_head * b_next_free;//空闲表上后一块
 };
 
 struct d_inode {
