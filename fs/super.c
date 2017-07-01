@@ -24,9 +24,10 @@ register int __res __asm__("ax"); \
 __asm__("bt %2,%3;setb %%al":"=a" (__res):"a" (0),"r" (bitnr),"m" (*(addr))); \
 __res; })
 
+//超级块结构表数组
 struct super_block super_block[NR_SUPER];
 /* this is initialized in init/main.c */
-int ROOT_DEV = 0;
+int ROOT_DEV = 0;//根文件系统设备号
 
 static void lock_super(struct super_block * sb)
 {
@@ -37,6 +38,7 @@ static void lock_super(struct super_block * sb)
 	sti();
 }
 
+//对指定的超级块解锁
 static void free_super(struct super_block * sb)
 {
 	cli();
@@ -45,6 +47,7 @@ static void free_super(struct super_block * sb)
 	sti();
 }
 
+//睡眠等待超级块解锁
 static void wait_on_super(struct super_block * sb)
 {
 	cli();
@@ -53,49 +56,62 @@ static void wait_on_super(struct super_block * sb)
 	sti();
 }
 
+//取指定设备的超级块
+//
 struct super_block * get_super(int dev)
 {
 	struct super_block * s;
 
+	//判断设备的有效性
 	if (!dev)
 		return NULL;
+		
+	//遍历超级块数组，寻找指定设备dev的超级块	
 	s = 0+super_block;
 	while (s < NR_SUPER+super_block)
 		if (s->s_dev == dev) {
 			wait_on_super(s);
 			if (s->s_dev == dev)
 				return s;
-			s = 0+super_block;
+			s = 0+super_block;//重新遍历超级块数组
 		} else
 			s++;
 	return NULL;
 }
 
+//释放（放回）指定的超级块
 void put_super(int dev)
 {
 	struct super_block * sb;
 	int i;
 
+	
 	if (dev == ROOT_DEV) {
 		printk("root diskette changed: prepare for armageddon\n\r");
 		return;
 	}
+
+	//在超级块数组中寻找指定设备号的文件系统超级块，找不到，则返回
 	if (!(sb = get_super(dev)))
 		return;
+	//找到超级块，但是该超级块指明该文件系统所安装到的i节点还没有被处理过，显示警告信息并返回
+	//在文件系统卸载umount中，s_imount会先被置成null，然后才调用本函数
 	if (sb->s_imount) {
 		printk("Mounted disk changed - tssk, tssk\n\r");
 		return;
 	}
+	//锁定该超级块
 	lock_super(sb);
-	sb->s_dev = 0;
+	sb->s_dev = 0;//置该超级块对应的设备号字段为0，即释放该设备上的文件系统超级块
 	for(i=0;i<I_MAP_SLOTS;i++)
-		brelse(sb->s_imap[i]);
+		brelse(sb->s_imap[i]);//释放该设备上文件系统i节点位图和逻辑位图中所占用的缓冲块
 	for(i=0;i<Z_MAP_SLOTS;i++)
 		brelse(sb->s_zmap[i]);
 	free_super(sb);
 	return;
 }
 
+//读取指定设备的超级块
 static struct super_block * read_super(int dev)
 {
 	struct super_block * s;

@@ -51,27 +51,34 @@ static inline void unlock_inode(struct m_inode * inode)
 	wake_up(&inode->i_wait);
 }
 
+//释放设备dev在内存i节点表中的所有i节点
 void invalidate_inodes(int dev)
 {
 	int i;
 	struct m_inode * inode;
 
+	//扫描i节点数组，释放该设备的所有的i节点
 	inode = 0+inode_table;
 	for(i=0 ; i<NR_INODE ; i++,inode++) {
 		wait_on_inode(inode);
+
 		if (inode->i_dev == dev) {
 			if (inode->i_count)
 				printk("inode in use on removed disk\n\r");
-			inode->i_dev = inode->i_dirt = 0;
+			inode->i_dev = inode->i_dirt = 0;//释放i节点（置设备号为0）
 		}
 	}
 }
 
+//同步所有的i节点
+//把内存i节点表中所有i节点与设备上i节点作同步操作
 void sync_inodes(void)
 {
 	int i;
 	struct m_inode * inode;
 
+	//扫描内存中的i节点数组，对于已被修改并且不是管道的i节点，写入高速缓冲区，
+	//缓冲区管理程序会在时机写入盘中
 	inode = 0+inode_table;
 	for(i=0 ; i<NR_INODE ; i++,inode++) {
 		wait_on_inode(inode);
@@ -80,6 +87,7 @@ void sync_inodes(void)
 	}
 }
 
+//文件数据块映射到盘块的处理操作（block位图处理函数）
 static int _bmap(struct m_inode * inode,int block,int create)
 {
 	struct buffer_head * bh;
@@ -148,11 +156,17 @@ static int _bmap(struct m_inode * inode,int block,int create)
 	return i;
 }
 
+//取文件数据块block在设备上对应的逻辑块号
+//如果对应的逻辑块不存在就创建一块，并返回设备上对应的逻辑块号
+//block-文件中的数据块号
 int bmap(struct m_inode * inode,int block)
 {
 	return _bmap(inode,block,0);
 }
 
+//取文件数据块block在设备上对应的逻辑块号
+//如果对应的逻辑块不存在就创建一块，并返回设备上对应的逻辑块号
+//block-文件中的数据块号
 int create_block(struct m_inode * inode, int block)
 {
 	return _bmap(inode,block,1);
@@ -282,19 +296,23 @@ struct m_inode * get_empty_inode(void)
 	return inode;
 }
 
+//获取管道节点
 struct m_inode * get_pipe_inode(void)
 {
 	struct m_inode * inode;
 
+	//从内存i节点表获取一个空闲i节点
 	if (!(inode = get_empty_inode()))
 		return NULL;
+	//为该i节点申请一页内存，并让i_size字段指向该页面
 	if (!(inode->i_size=get_free_page())) {
 		inode->i_count = 0;
 		return NULL;
 	}
+	//读写两者总计
 	inode->i_count = 2;	/* sum of readers/writers */
-	PIPE_HEAD(*inode) = PIPE_TAIL(*inode) = 0;
-	inode->i_pipe = 1;
+	PIPE_HEAD(*inode) = PIPE_TAIL(*inode) = 0;//复位管道头尾指针
+	inode->i_pipe = 1;//置节点管道使用标志
 	return inode;
 }
 
@@ -411,9 +429,10 @@ static void read_inode(struct m_inode * inode)
 			
 	//最后释放读入的缓冲块
 	brelse(bh);
-	
+
+	//如果是块设备，设置i节点的文件最大长度值
 	if (S_ISBLK(inode->i_mode)) {
-		int i = inode->i_zone[0];
+		int i = inode->i_zone[0];//对于块设备，i_zone[0]中是设备号
 		if (blk_size[MAJOR(i)])
 			inode->i_size = 1024*blk_size[MAJOR(i)][MINOR(i)];
 		else
