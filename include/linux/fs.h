@@ -46,22 +46,23 @@ void buffer_init(long buffer_end);
 #define NR_SUPER 8
 #define NR_HASH 307 //缓冲区hash表数组项数值
 #define NR_BUFFERS nr_buffers
-#define BLOCK_SIZE 1024
+#define BLOCK_SIZE 1024 //数据块长度（字节数）
 #define BLOCK_SIZE_BITS 10
 #ifndef NULL
 #define NULL ((void *) 0)
 #endif
 
+//每个逻辑块可存放i节点数
 #define INODES_PER_BLOCK ((BLOCK_SIZE)/(sizeof (struct d_inode)))
 #define DIR_ENTRIES_PER_BLOCK ((BLOCK_SIZE)/(sizeof (struct dir_entry)))
 
 #define PIPE_READ_WAIT(inode) ((inode).i_wait)
 #define PIPE_WRITE_WAIT(inode) ((inode).i_wait2)
-#define PIPE_HEAD(inode) ((inode).i_zone[0])
-#define PIPE_TAIL(inode) ((inode).i_zone[1])
-#define PIPE_SIZE(inode) ((PIPE_HEAD(inode)-PIPE_TAIL(inode))&(PAGE_SIZE-1))
-#define PIPE_EMPTY(inode) (PIPE_HEAD(inode)==PIPE_TAIL(inode))
-#define PIPE_FULL(inode) (PIPE_SIZE(inode)==(PAGE_SIZE-1))
+#define PIPE_HEAD(inode) ((inode).i_zone[0])//管道头
+#define PIPE_TAIL(inode) ((inode).i_zone[1])//管道尾
+#define PIPE_SIZE(inode) ((PIPE_HEAD(inode)-PIPE_TAIL(inode))&(PAGE_SIZE-1))//管道大小
+#define PIPE_EMPTY(inode) (PIPE_HEAD(inode)==PIPE_TAIL(inode))//管道空？
+#define PIPE_FULL(inode) (PIPE_SIZE(inode)==(PAGE_SIZE-1))//管道尾？
 
 #define NIL_FILP	((struct file *)0)
 #define SEL_IN		1
@@ -125,15 +126,17 @@ struct m_inode {
 	unsigned char i_update;//更新标志
 };
 
+//文件结构（用于文件句柄和i节点之间建立关系）
 struct file {
-	unsigned short f_mode;
-	unsigned short f_flags;
-	unsigned short f_count;
-	struct m_inode * f_inode;
-	off_t f_pos;
+	unsigned short f_mode;//文件操作模式（读写）
+	unsigned short f_flags;//文件打开和控制标志
+	unsigned short f_count;//文件引用计数
+	struct m_inode * f_inode;//文件对应i节点
+	off_t f_pos;//文件位置（读写便宜值）
 };
 
 //内存中磁盘超级块结构
+//超级块用于存放盘设备上问及系统信息，并说明各部分大小
 struct super_block {
 	unsigned short s_ninodes;//节点数
 	unsigned short s_nzones;//逻辑块数
@@ -156,15 +159,16 @@ struct super_block {
 	unsigned char s_dirt;//已修改标志
 };
 
+//磁盘上超级块结构
 struct d_super_block {
-	unsigned short s_ninodes;
-	unsigned short s_nzones;
-	unsigned short s_imap_blocks;
-	unsigned short s_zmap_blocks;
-	unsigned short s_firstdatazone;
-	unsigned short s_log_zone_size;
-	unsigned long s_max_size;
-	unsigned short s_magic;
+	unsigned short s_ninodes;//节点数
+	unsigned short s_nzones;//逻辑块数
+	unsigned short s_imap_blocks;//i节点位图所占用的数据块数
+	unsigned short s_zmap_blocks;//逻辑位图所占用的数据块数
+	unsigned short s_firstdatazone;//第一个数据逻辑块数
+	unsigned short s_log_zone_size;//log（数据块数/逻辑块）
+	unsigned long s_max_size;//文件最大长度
+	unsigned short s_magic;//文件系统魔数
 };
 
 struct dir_entry {

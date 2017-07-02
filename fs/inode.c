@@ -88,44 +88,69 @@ void sync_inodes(void)
 }
 
 //文件数据块映射到盘块的处理操作（block位图处理函数）
+//inode - 文件的i节点指针
+//block - 文件中的数据块号
+//create - 创建块标志
 static int _bmap(struct m_inode * inode,int block,int create)
 {
 	struct buffer_head * bh;
 	int i;
 
+	//判断文件数据块号的有效性
+	//（文件系统表示范围）0 < block < 直接块数 + 间接块数 + 二次间接块数
 	if (block<0)
 		panic("_bmap: block<0");
 	if (block >= 7+512+512*512)
 		panic("_bmap: block>big");
+
+	//block<7，则用直接块表示
 	if (block<7) {
+		//如果创建标志置位 且 i节点中对应该块的逻辑块字段为0，则向相应设备申请已盘块
 		if (create && !inode->i_zone[block])
+			//向设备申请盘块，并将盘上逻辑块号（盘块号）填如逻辑字段中
 			if (inode->i_zone[block]=new_block(inode->i_dev)) {
 				inode->i_ctime=CURRENT_TIME;
-				inode->i_dirt=1;
+				inode->i_dirt=1;//设置已修改标志
 			}
 		return inode->i_zone[block];
 	}
+
+	//如果7<=block<512，则使用的是一次间接块
 	block -= 7;
 	if (block<512) {
+		//创建 且 i_zone[7] = 0,则是首次使用间接块
 		if (create && !inode->i_zone[7])
+			//需要申请一个磁盘块用于存放间接信息
 			if (inode->i_zone[7]=new_block(inode->i_dev)) {
 				inode->i_dirt=1;
 				inode->i_ctime=CURRENT_TIME;
 			}
+		//申请间接块失败，则i_zone[7]为0
 		if (!inode->i_zone[7])
 			return 0;
+		//读取设备上该i节点的一次间接块
 		if (!(bh = bread(inode->i_dev,inode->i_zone[7])))
 			return 0;
+			
+		//取该间接块上第block项中的逻辑块号（盘块号）i，每一项占2个字节
 		i = ((unsigned short *) (bh->b_data))[block];
+		//如果创建 且 间接块第block项中的逻辑块号为0，则申请一磁盘块
 		if (create && !i)
 			if (i=new_block(inode->i_dev)) {
+				//让间接块中的第block项等于该新逻辑块号
 				((unsigned short *) (bh->b_data))[block]=i;
+				//置位修改标志
 				bh->b_dirt=1;
 			}
-		brelse(bh);
+		//如果不是创建，则i就是需要寻找的逻辑块号
+		brelse(bh);//释放该间接块占用的缓冲块
 		return i;
 	}
+
+	//到此，说明是二次间接块
+	//block减去间接块所容纳的块数
 	block -= 512;
+	//根据创建标志创建
 	if (create && !inode->i_zone[8])
 		if (inode->i_zone[8]=new_block(inode->i_dev)) {
 			inode->i_dirt=1;
@@ -133,20 +158,28 @@ static int _bmap(struct m_inode * inode,int block,int create)
 		}
 	if (!inode->i_zone[8])
 		return 0;
+	//读取该设备上该i节点的二次间接块
 	if (!(bh=bread(inode->i_dev,inode->i_zone[8])))
 		return 0;
+	//取该二次间接块的一级块上第block/512项中的逻辑块号i
 	i = ((unsigned short *)bh->b_data)[block>>9];
+	//如果创建且逻辑块号为0，则需要在磁盘上申请一磁盘块作为二次间接块的二级块i
 	if (create && !i)
 		if (i=new_block(inode->i_dev)) {
 			((unsigned short *) (bh->b_data))[block>>9]=i;
 			bh->b_dirt=1;
 		}
+		
 	brelse(bh);
+
+	//如果二次间接块的二级块号为0，表示申请磁盘块失败或原来对应块号就为0
 	if (!i)
 		return 0;
+	//从设备上读区二次间接块的二级块，并取该二级块上第block项目中的逻辑块号
 	if (!(bh=bread(inode->i_dev,i)))
 		return 0;
 	i = ((unsigned short *)bh->b_data)[block&511];
+	//如果穿件并且二级块的第block项中逻辑块号为0，则申请一磁盘块，最为最终存放数据信息块
 	if (create && !i)
 		if (i=new_block(inode->i_dev)) {
 			((unsigned short *) (bh->b_data))[block&511]=i;
