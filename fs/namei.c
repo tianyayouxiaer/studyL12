@@ -18,8 +18,16 @@
 #include <const.h>
 #include <sys/stat.h>
 
+//由文件名查找对应i节点的内部函数
 static struct m_inode * _namei(const char * filename, struct m_inode * base,
 	int follow_links);
+
+//O_ACCMOD - 00003
+//8进制
+//\004 - 字符r用ascii码表示
+//\002 - 字符w用ascii码表示
+//\006 - 字符rw用ascii码表示
+//\377 - 字符wxrwxrwx用ascii码表示
 
 #define ACC_MODE(x) ("\004\002\006\377"[(x)&O_ACCMODE])
 
@@ -29,9 +37,9 @@ static struct m_inode * _namei(const char * filename, struct m_inode * base,
  */
 /* #define NO_TRUNCATE */
 
-#define MAY_EXEC 1
-#define MAY_WRITE 2
-#define MAY_READ 4
+#define MAY_EXEC 1//可执行
+#define MAY_WRITE 2//可写
+#define MAY_READ 4//可读
 
 /*
  *	permission()
@@ -40,6 +48,7 @@ static struct m_inode * _namei(const char * filename, struct m_inode * base,
  * I don't know if we should look at just the euid or both euid and
  * uid, but that should be easily changed.
  */
+ //检测文件可访问权限
 static int permission(struct m_inode * inode,int mask)
 {
 	int mode = inode->i_mode;
@@ -63,6 +72,7 @@ static int permission(struct m_inode * inode,int mask)
  *
  * NOTE! unlike strncmp, match returns 1 for success, 0 for failure.
  */
+ //指定长度字符串比较
 static int match(int len,const char * name,struct dir_entry * de)
 {
 	register int same __asm__("ax");
@@ -94,6 +104,13 @@ static int match(int len,const char * name,struct dir_entry * de)
  * This also takes care of the few special cases due to '..'-traversal
  * over a pseudo-root and a mount point.
  */
+ //查找指定目录和文件名的目录项
+ //dir-指定目录i节点指针
+ //name-文件名
+ //namelen-文件名长度
+//在指定目录的文件中搜索指定文件名的目录项，并对指定文件名是'..'的情况
+//进行特殊处理
+//成功；返回高速缓冲区指针，并在* res_dir处返回的目录项结构指针，失败返回null
 static struct buffer_head * find_entry(struct m_inode ** dir,
 	const char * name, int namelen, struct dir_entry ** res_dir)
 {
@@ -107,27 +124,39 @@ static struct buffer_head * find_entry(struct m_inode ** dir,
 	if (namelen > NAME_LEN)
 		return NULL;
 #else
+	//文件名截断
 	if (namelen > NAME_LEN)
 		namelen = NAME_LEN;
 #endif
+
+	//计算本目录中，目录项数
+	//i_size包含本目录包含的数据长度，除以目录项结构长度，得到个数
 	entries = (*dir)->i_size / (sizeof (struct dir_entry));
+	
+	//置空返回的目录项结构指针
 	*res_dir = NULL;
+
+	//对指定文件名是'..'的情况进行特殊处理
 /* check for '..', as we might have to do some "magic" for it */
+	//判断是否是..的情况
 	if (namelen==2 && get_fs_byte(name)=='.' && get_fs_byte(name+1)=='.') {
 /* '..' in a pseudo-root results in a faked '.' (just change namelen) */
+		//伪根中的'..'，如果一个假'.'，只需要改变名字长度
 		if ((*dir) == current->root)
-			namelen=1;
-		else if ((*dir)->i_num == ROOT_INO) {
+			namelen=1;//即进程只能访问该目录中的项而不能后退到其父目录中去，对于本进程本目录进如同文件系统根目录
+		else if ((*dir)->i_num == ROOT_INO) {//该目录的i节点号等于1，说明确实是文件的根i节点
 /* '..' over a mount-point results in 'dir' being exchanged for the mounted
    directory-inode. NOTE! We set mounted, so that we can iput the new dir */
+   			//取超级块
 			sb=get_super((*dir)->i_dev);
-			if (sb->s_imount) {
-				iput(*dir);
+			if (sb->s_imount) {//如果被安装的i节点存在，则先放回i节点，然后对被安装到的i节点进行处理
+				iput(*dir);//我们让*dir指向该被安装到的i节点，并且让该i节点的引用数加1
 				(*dir)=sb->s_imount;
 				(*dir)->i_count++;
 			}
 		}
 	}
+	
 	if (!(block = (*dir)->i_zone[0]))
 		return NULL;
 	if (!(bh = bread((*dir)->i_dev,block)))
@@ -166,6 +195,7 @@ static struct buffer_head * find_entry(struct m_inode ** dir,
  * may not sleep between calling this and putting something into
  * the entry, as someone else might have used it while you slept.
  */
+ //根据指定的目录和文件名添加目录项
 static struct buffer_head * add_entry(struct m_inode * dir,
 	const char * name, int namelen, struct dir_entry ** res_dir)
 {
@@ -223,6 +253,7 @@ static struct buffer_head * add_entry(struct m_inode * dir,
 	return NULL;
 }
 
+//查找符号链接的i节点
 static struct m_inode * follow_link(struct m_inode * dir, struct m_inode * inode)
 {
 	unsigned short fs;
@@ -261,6 +292,8 @@ static struct m_inode * follow_link(struct m_inode * dir, struct m_inode * inode
  * Getdir traverses the pathname until it hits the topmost directory.
  * It returns NULL on failure.
  */
+ //从指定目录开始搜寻指定路径名的目录
+ //inode-指定其实目录的i节点
 static struct m_inode * get_dir(const char * pathname, struct m_inode * inode)
 {
 	char c;
@@ -270,30 +303,52 @@ static struct m_inode * get_dir(const char * pathname, struct m_inode * inode)
 	struct dir_entry * de;
 	struct m_inode * dir;
 
+	//参数检查，如inode为null，则使用当前进程的当前工作目录i节点
 	if (!inode) {
 		inode = current->pwd;
 		inode->i_count++;
 	}
+	
+	//如果用户路径名的第1个字符是'/'，则说明是绝对路径名
+	//则需要放回inode指定或者设定的目录i节点，并取得进程使用的根i节点
+	//这样就可以保证当前进程只能以其设定的根i节点作为搜索的起点
 	if ((c=get_fs_byte(pathname))=='/') {
-		iput(inode);
-		inode = current->root;
+		iput(inode);//放回原i节点
+		inode = current->root;//为进程指定的根i节点
+		//i节点的引用计数加1，并删除路径名的第1个字符'/'
 		pathname++;
 		inode->i_count++;
 	}
+
+	//针对路径名中的各个目录部分和文件名进行循环处理
 	while (1) {
+		//对当前正在处理的目录名部门的i节点进行有效判断，并把thisname指向当前正在处理的目录名部分
 		thisname = pathname;
+		//若该i节点表明当前目录名部分不是目录类型，或者没有可进入的该目录的访问权限，则放回该节点
+		//返回null，退出
+		//刚进入循环的时候，当前目录i节点inode就是进程根i节点或者是当前工作目录的i节点，或者是参数
+		//指定的某个搜索起始目录的i节点
 		if (!S_ISDIR(inode->i_mode) || !permission(inode,MAY_EXEC)) {
 			iput(inode);
 			return NULL;
 		}
+
+		//每次循环，都从路径名中分离处一个目录名或者文件名
+		//c两种可能，结尾符（NULL）, '/'
 		for(namelen=0;(c=get_fs_byte(pathname++))&&(c!='/');namelen++)
 			/* nothing */ ;
+
+		//达到最后指定目录名和文件名，则返回该i节点指针并退出
 		if (!c)
 			return inode;
+
+		//在得到当前目录名或者文件名后，调用查找目录项函数find_entry
+		//在当前处理的目录中寻找指定名称的目录项。
 		if (!(bh = find_entry(&inode,thisname,namelen,&de))) {
 			iput(inode);
 			return NULL;
 		}
+		
 		inr = de->inode;
 		brelse(bh);
 		dir = inode;
@@ -312,6 +367,7 @@ static struct m_inode * get_dir(const char * pathname, struct m_inode * inode)
  * dir_namei() returns the inode of the directory of the
  * specified name, and the name within that directory.
  */
+ //获取指定目录名的i节点指针，以及在最顶层的目录名称
 static struct m_inode * dir_namei(const char * pathname,
 	int * namelen, const char ** name, struct m_inode * base)
 {
@@ -319,6 +375,7 @@ static struct m_inode * dir_namei(const char * pathname,
 	const char * basename;
 	struct m_inode * dir;
 
+	//
 	if (!(dir = get_dir(pathname,base)))
 		return NULL;
 	basename = pathname;
@@ -330,6 +387,10 @@ static struct m_inode * dir_namei(const char * pathname,
 	return dir;
 }
 
+//取指定路径没那个的i节点
+//path-路径名
+//base-搜索起点目录i节点
+//follow_links-是否跟随符号链接，1需要，0不需要
 struct m_inode * _namei(const char * pathname, struct m_inode * base,
 	int follow_links)
 {
@@ -339,6 +400,7 @@ struct m_inode * _namei(const char * pathname, struct m_inode * base,
 	struct buffer_head * bh;
 	struct dir_entry * de;
 
+	//
 	if (!(base = dir_namei(pathname,&namelen,&basename,base)))
 		return NULL;
 	if (!namelen)			/* special case: '/usr/' etc */
@@ -363,6 +425,7 @@ struct m_inode * _namei(const char * pathname, struct m_inode * base,
 	return inode;
 }
 
+//取指定路径名称的i节点，不跟随符号链接
 struct m_inode * lnamei(const char * pathname)
 {
 	return _namei(pathname, NULL, 0);
@@ -375,6 +438,7 @@ struct m_inode * lnamei(const char * pathname)
  * Open, link etc use their own routines, but this is enough for things
  * like 'chmod' etc.
  */
+//取指定路径名称的i节点，跟随符号链接
 struct m_inode * namei(const char * pathname)
 {
 	return _namei(pathname,NULL,1);
@@ -385,6 +449,7 @@ struct m_inode * namei(const char * pathname)
  *
  * namei for open - this is in fact almost the whole open-routine.
  */
+ //文件打开namei函数
 int open_namei(const char * pathname, int flag, int mode,
 	struct m_inode ** res_inode)
 {
@@ -461,6 +526,7 @@ int open_namei(const char * pathname, int flag, int mode,
 	return 0;
 }
 
+//创建一个设备特殊文件或普通文件节点
 int sys_mknod(const char * filename, int mode, int dev)
 {
 	const char * basename;
@@ -512,6 +578,7 @@ int sys_mknod(const char * filename, int mode, int dev)
 	return 0;
 }
 
+//创建一个目录
 int sys_mkdir(const char * pathname, int mode)
 {
 	const char * basename;
@@ -588,6 +655,7 @@ int sys_mkdir(const char * pathname, int mode)
 /*
  * routine to check that the specified directory is empty (for rmdir)
  */
+ //检查指定的目录是否为空
 static int empty_dir(struct m_inode * inode)
 {
 	int nr,block;
@@ -632,6 +700,7 @@ static int empty_dir(struct m_inode * inode)
 	return 1;
 }
 
+//删除目录
 int sys_rmdir(const char * name)
 {
 	const char * basename;
@@ -706,6 +775,7 @@ int sys_rmdir(const char * name)
 	return 0;
 }
 
+//删除文件名对应的目录项
 int sys_unlink(const char * name)
 {
 	const char * basename;
@@ -764,6 +834,7 @@ int sys_unlink(const char * name)
 	return 0;
 }
 
+//建立符号链接
 int sys_symlink(const char * oldname, const char * newname)
 {
 	struct dir_entry * de;
@@ -834,6 +905,7 @@ int sys_symlink(const char * oldname, const char * newname)
 	return 0;
 }
 
+//为文件建立一个文件名目录项
 int sys_link(const char * oldname, const char * newname)
 {
 	struct dir_entry * de;
