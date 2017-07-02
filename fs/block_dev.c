@@ -11,10 +11,21 @@
 #include <asm/segment.h>
 #include <asm/system.h>
 
+//设备数据块总数指针数组
+//每个指针项指向主设备号的总块数数组hd_size[],
+//该总块数数组每一项对应子设备号确定的一个子设备上所拥有的数据块总数（1块大小=1KB）
 extern int *blk_size[];
 
+//数据块写函数-向指定设备从给定偏移处写入指定长度数据
+//参数：dev-设备号，pos-设备文件中偏移量指针，buf-用户空间中缓冲区地址，count-要传送的字节数
+//返回值：传送的字节数或者错误号
+//对于内核来说，写操作是向高速缓冲区中写入数据；什么时候数据最终写入设备是由高速缓冲管理程序决定并
+//处理；块设备是以块为单位读写，对于写位置不处块起始位置，需先将开始字节所在的整个块读出，然后将需要
+//写的数据从写开始处填写满该块，再将完整的一块数据写盘（即交由高速缓冲程序区处理）
 int block_write(int dev, long * pos, char * buf, int count)
 {
+	//由文件中位置pos换算成开始读写盘块的块序号block
+	//需要写第一个字节在该块中的偏移offset
 	int block = *pos >> BLOCK_SIZE_BITS;
 	int offset = *pos & (BLOCK_SIZE-1);
 	int chars;
