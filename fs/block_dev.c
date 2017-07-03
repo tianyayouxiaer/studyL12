@@ -34,31 +34,54 @@ int block_write(int dev, long * pos, char * buf, int count)
 	struct buffer_head * bh;
 	register char * p;
 
+	//写一个块设备时，写的总数据块数不能超过指定设备上容许的最大数据块总数
 	if (blk_size[MAJOR(dev)])
+		//取出指定设备的块总数size
 		size = blk_size[MAJOR(dev)][MINOR(dev)];
 	else
+		//如果系统中没有对设备指定长度，就使用默认长度（2GB个块）
 		size = 0x7fffffff;
+
+	//针对要写入的字节数，循环操作，直到数据全部写入
 	while (count>0) {
+		//若当前写入数据的块号已经大于或等于指定设备的总块数，则返回已经写入的字节数并退出
 		if (block >= size)
 			return written?written:-EIO;
-		chars = BLOCK_SIZE - offset;
+
+		//计算本快可写入的字节数
+		chars = BLOCK_SIZE - offset;//本块可写入的字节数
+		//如果要写入的字节数count填不满一块，那么就只写count个字节
 		if (chars > count)
 			chars=count;
+		//如果要写入的字节数count刚好为一块，则直接申请一块高速缓冲区
 		if (chars == BLOCK_SIZE)
 			bh = getblk(dev,block);
 		else
+		   //读入将被写入数据部分的数据块，并预读下两个数据块
 			bh = breada(dev,block,block+1,block+2,-1);
+			
 		block++;
 		if (!bh)
 			return written?written:-EIO;
+			
+		//把指针p指向读出数据的缓冲块开始写入数据的位置处
 		p = offset + bh->b_data;
+		//预先设置offset为0
 		offset = 0;
+		//将文件中偏移指针pos前移此次将要写的字节数chars
 		*pos += chars;
+
+		//累计这些要写入的字节数到统计值written中
 		written += chars;
+		//再把还需要写的计数值count减去此次要写的字节数chars
 		count -= chars;
+
+		//从用户缓冲区复制chars个字节到p指向的高速缓冲块开始写入的位置
 		while (chars-->0)
 			*(p++) = get_fs_byte(buf++);
+		//复制完后，设置该缓冲区块已修改标志
 		bh->b_dirt = 1;
+		//释放该缓冲区，及缓冲区引用计数减1
 		brelse(bh);
 	}
 	return written;
