@@ -4,17 +4,18 @@
 #include <sys/types.h>
 
 /* open/fcntl - NOCTTY, NDELAY isn't implemented yet */
-#define O_ACCMODE	00003
-#define O_RDONLY	   00
-#define O_WRONLY	   01
-#define O_RDWR		   02
-#define O_CREAT		00100	/* not fcntl */
-#define O_EXCL		00200	/* not fcntl */
-#define O_NOCTTY	00400	/* not fcntl */
-#define O_TRUNC		01000	/* not fcntl */
-#define O_APPEND	02000
-#define O_NONBLOCK	04000	/* not fcntl */
-#define O_NDELAY	O_NONBLOCK
+#define O_ACCMODE	00003	//文件访问模式屏蔽码
+#define O_RDONLY	   00	//以只读方式打开文件
+#define O_WRONLY	   01	//以只写方式打开文件
+#define O_RDWR		   02	//以读写方式打开文件
+/* 文件创建标志 */
+#define O_CREAT		00100	/* not fcntl */ //文件不存在就创建
+#define O_EXCL		00200	/* not fcntl */ //独占使用文件
+#define O_NOCTTY	00400	/* not fcntl */ //不分配控制终端
+#define O_TRUNC		01000	/* not fcntl */ //若文件已存在，且是写操作，则长度截为0
+#define O_APPEND	02000 						//以添加方式打开，文件指针置为文件尾
+#define O_NONBLOCK	04000	/* not fcntl */ //非阻塞方式打开和操作文件
+#define O_NDELAY	O_NONBLOCK					//分阻塞方式打开和操作文件
 
 /* Defines for fcntl-commands. Note that currently
  * locking isn't supported, and other things aren't really

@@ -132,7 +132,7 @@ struct file {
 	unsigned short f_flags;//文件打开和控制标志
 	unsigned short f_count;//文件引用计数
 	struct m_inode * f_inode;//文件对应i节点
-	off_t f_pos;//文件位置（读写便宜值）
+	off_t f_pos;//文件位置（读写偏移值）
 };
 
 //内存中磁盘超级块结构
