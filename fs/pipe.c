@@ -13,32 +13,46 @@
 #include <asm/segment.h>
 #include <linux/kernel.h>
 
+//管道读操作函数
+//参数inode是管道对应的i节点；buf - 用户缓冲区指针；count - 读取字节数
 int read_pipe(struct m_inode * inode, char * buf, int count)
 {
 	int chars, size, read = 0;
 
+	//循环执行读操作
 	while (count>0) {
+		//若管道中没有数据，则唤醒等待该节点的进程，该进程通常是写管道进程
 		while (!(size=PIPE_SIZE(*inode))) {
-			wake_up(& PIPE_WRITE_WAIT(*inode));
+			wake_up(& PIPE_WRITE_WAIT(*inode));//取管道中数据长度
+			//如果已经没有写管道者，即i节点引用计数值小于2，则返回已读字节数退出
 			if (inode->i_count != 2) /* are there any writers? */
 				return read;
+			//如果目前收到非阻塞信号，则立刻返回已读取字节数并退出
 			if (current->signal & ~current->blocked)
 				return read?read:-ERESTARTSYS;
+			//让该进程在管道上睡眠，用以等待消息的到来
 			interruptible_sleep_on(& PIPE_READ_WAIT(*inode));
 		}
+		//到此说明管道中有数据，于是我们取管道尾指针到缓冲区末端的字节数chars。
 		chars = PAGE_SIZE-PIPE_TAIL(*inode);
-		if (chars > count)
+		if (chars > count)		//如果其大于还需要读取的字节数count，则令其等于count。
 			chars = count;
-		if (chars > size)
+		if (chars > size)		//如果其大于当前管道中含有数据的长度size，则令其等于size。
 			chars = size;
+		//减去此次读取的字节数，并累加已读字节数read
 		count -= chars;
 		read += chars;
+
+		//size指向管道尾指针处，并调用当前管道尾指针（前移chas个字节）
 		size = PIPE_TAIL(*inode);
 		PIPE_TAIL(*inode) += chars;
+		//若尾指针超过管道末端则绕回，
 		PIPE_TAIL(*inode) &= (PAGE_SIZE-1);
+		//将管道中的数据复制到用户缓冲区中
 		while (chars-->0)
 			put_fs_byte(((char *)inode->i_size)[size++],buf++);
 	}
+	//此次管道操作结束，则唤醒等待该管道的进程，并返回读取的字节数
 	wake_up(& PIPE_WRITE_WAIT(*inode));
 	return read;
 }
