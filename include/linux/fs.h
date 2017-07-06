@@ -21,6 +21,7 @@
  * 7 - unnamed pipes
  */
 
+//判断设备是否是可以寻找定位的
 #define IS_SEEKABLE(x) ((x)>=1 && (x)<=3)
 
 #define READ 0

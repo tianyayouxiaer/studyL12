@@ -35,20 +35,21 @@ struct stat {
 #define S_ISBLK(m)	(((m) & S_IFMT) == S_IFBLK)
 #define S_ISFIFO(m)	(((m) & S_IFMT) == S_IFIFO)
 
-#define S_IRWXU 00700
-#define S_IRUSR 00400
-#define S_IWUSR 00200
-#define S_IXUSR 00100
+//文件访问权限
+#define S_IRWXU 00700//宿主可以读、写、执行/搜索（名称最后字母代表user）
+#define S_IRUSR 00400//宿主读许可
+#define S_IWUSR 00200//宿主写许可
+#define S_IXUSR 00100//宿主执行/搜索许可
 
-#define S_IRWXG 00070
-#define S_IRGRP 00040
-#define S_IWGRP 00020
-#define S_IXGRP 00010
+#define S_IRWXG 00070//组成员可以读、写、执行/搜索（名称最后字母代表group）
+#define S_IRGRP 00040//组成员读许可
+#define S_IWGRP 00020//组成员写许可
+#define S_IXGRP 00010//组成员执行/搜索许可
 
-#define S_IRWXO 00007
-#define S_IROTH 00004
-#define S_IWOTH 00002
-#define S_IXOTH 00001
+#define S_IRWXO 00007//其它人可以读、写、执行/搜索（名称最后字母代表group）
+#define S_IROTH 00004//其它人读许可
+#define S_IWOTH 00002//其它人写许可
+#define S_IXOTH 00001//其它人执行/搜索许可
 
 extern int chmod(const char *_path, mode_t mode);
 extern int fstat(int fildes, struct stat *stat_buf);

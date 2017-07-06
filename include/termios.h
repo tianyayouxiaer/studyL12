@@ -33,6 +33,7 @@
 #define TIOCMSET	0x5418
 #define TIOCGSOFTCAR	0x5419
 #define TIOCSSOFTCAR	0x541A
+//返回队列中还未取走字符的数目
 #define FIONREAD	0x541B
 #define TIOCINQ		FIONREAD
 

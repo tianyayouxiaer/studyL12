@@ -27,12 +27,12 @@ struct tty_queue {
 	char buf[TTY_BUF_SIZE];
 };
 
-#define IS_A_CONSOLE(min)	(((min) & 0xC0) == 0x00)
-#define IS_A_SERIAL(min)	(((min) & 0xC0) == 0x40)
-#define IS_A_PTY(min)		((min) & 0x80)
-#define IS_A_PTY_MASTER(min)	(((min) & 0xC0) == 0x80)
-#define IS_A_PTY_SLAVE(min)	(((min) & 0xC0) == 0xC0)
-#define PTY_OTHER(min)		((min) ^ 0x40)
+#define IS_A_CONSOLE(min)	(((min) & 0xC0) == 0x00)//是一个控制终端
+#define IS_A_SERIAL(min)	(((min) & 0xC0) == 0x40)//是一个串行终端
+#define IS_A_PTY(min)		((min) & 0x80)//是一个伪终端
+#define IS_A_PTY_MASTER(min)	(((min) & 0xC0) == 0x80)//是一个主伪终端，只能被进程独占使用
+#define IS_A_PTY_SLAVE(min)	(((min) & 0xC0) == 0xC0)//是一个辅伪终端
+#define PTY_OTHER(min)		((min) ^ 0x40)//其它伪终端
 
 #define INC(a) ((a) = ((a)+1) & (TTY_BUF_SIZE-1))
 #define DEC(a) ((a) = ((a)-1) & (TTY_BUF_SIZE-1))
@@ -69,6 +69,12 @@ struct tty_struct {
 
 extern struct tty_struct tty_table[];//tty结构数组
 extern int fg_console;//前台控制台号
+
+//根据终端类型在tty_table中取对应终端号nr的tty结构指针
+//根据子设备号dev在tty_table[]表中选择对应tty结构
+//dev = 0 表示正在使用前台终端,因此直接使用终端号fg_console作为tty_table[]项索引取tty结构
+//dev > 0 分两种情况，一、dev是虚拟终端号，tty结构在tty_table[]表中索引是dev-1（0 -- 63）；
+//二、dev是串行终端号或者其它类型终端，tty索引为dev
 
 #define TTY_TABLE(nr) \
 (tty_table + ((nr) ? (((nr) < 64)? (nr)-1:(nr))	: fg_console))
