@@ -55,19 +55,20 @@ struct tty_queue {
 #define STOP_CHAR(tty) ((tty)->termios.c_cc[VSTOP])
 #define SUSPEND_CHAR(tty) ((tty)->termios.c_cc[VSUSP])
 
+//tty数据结构
 struct tty_struct {
-	struct termios termios;
-	int pgrp;
-	int session;
-	int stopped;
-	void (*write)(struct tty_struct * tty);
-	struct tty_queue *read_q;
-	struct tty_queue *write_q;
-	struct tty_queue *secondary;
+	struct termios termios;//终端io属性和控制字符数据结构
+	int pgrp;//所属进程组
+	int session;//会话号
+	int stopped;//停止标志
+	void (*write)(struct tty_struct * tty);//tty写函数指针
+	struct tty_queue *read_q;//tty读队列
+	struct tty_queue *write_q;//tty写队列
+	struct tty_queue *secondary;//tty辅助队列（存放规范模式字符序列）
 	};
 
-extern struct tty_struct tty_table[];
-extern int fg_console;
+extern struct tty_struct tty_table[];//tty结构数组
+extern int fg_console;//前台控制台号
 
 #define TTY_TABLE(nr) \
 (tty_table + ((nr) ? (((nr) < 64)? (nr)-1:(nr))	: fg_console))
