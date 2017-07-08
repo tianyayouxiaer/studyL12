@@ -125,6 +125,9 @@ __asm__("cld\n"
 return __res;
 }
 
+//在字符串中寻找第一个匹配的字符串
+//参数：s - 字符串，c - 欲寻找的字符
+//返回：字符串中第一次出现匹配字符的指针，若没有找到，返回NULL
 extern inline char * strchr(const char * s,char c)
 {
 register char * __res __asm__("ax");

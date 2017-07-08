@@ -272,44 +272,71 @@ int do_execve(unsigned long * eip,long tmp,char * filename,
 	struct m_inode * inode;
 	struct buffer_head * bh;
 	struct exec ex;
-	unsigned long page[MAX_ARG_PAGES];
+	unsigned long page[MAX_ARG_PAGES];//参数和环境串空间页面指针数组
 	int i,argc,envc;
-	int e_uid, e_gid;
+	int e_uid, e_gid;//有效用户id和组id
 	int retval;
-	int sh_bang = 0;
-	unsigned long p=PAGE_SIZE*MAX_ARG_PAGES-4;
+	int sh_bang = 0;//控制是否需要执行脚本程序
+	//内核准备了128KB空间来存放执行文件的命令行参数和环境字符串
+	unsigned long p=PAGE_SIZE*MAX_ARG_PAGES-4;//p为用来指明128KB的当前位置，初始指向参数和环境空间的最后一个长字处
 
+	//eip[1]是调用本次系统调用的原用用户程序代码段寄存器cs值
+	//当前的段选择符必须为当前任务代码段选择符
+	//若不是，那么cs只会是内核代码段选择符0x0008，但这不允许，内核代码是常驻内存而不能被替换掉
 	if ((0xffff & eip[1]) != 0x000f)
 		panic("execve called from supervisor mode");
+	//初始化128KB参数和环境空间，把所有字节清零
 	for (i=0 ; i<MAX_ARG_PAGES ; i++)	/* clear page-table */
 		page[i]=0;
+	//并取出执行文件的i节点
 	if (!(inode=namei(filename)))		/* get executables inode */
 		return -ENOENT;
+	//计算出命令行参数和环境字符串的个数
 	argc = count(argv);
 	envc = count(envp);
 	
 restart_interp:
+	//执行文件必须是常规文件
 	if (!S_ISREG(inode->i_mode)) {	/* must be regular file */
 		retval = -EACCES;
 		goto exec_error2;
 	}
+	//检查当前进程是否有权运行指定的执行文件
 	i = inode->i_mode;
+	
+	// 如果文件的设置用户ID 标志（set-user-id）置位的话，则后面执行进程的有效用户ID（euid）就
+	// 设置为文件的用户ID，否则设置成当前进程的euid。这里将该值暂时保存在e_uid 变量中。
+	// 如果文件的设置组ID 标志（set-group-id）置位的话，则执行进程的有效组ID（egid）就设置为
+	// 文件的组ID。否则设置成当前进程的egid。
 	e_uid = (i & S_ISUID) ? inode->i_uid : current->euid;
 	e_gid = (i & S_ISGID) ? inode->i_gid : current->egid;
+
+	// 如果文件属于运行进程的用户，则把文件属性字右移6 位，则最低3 位是文件宿主的访问权限标志。
+	// 否则的话如果文件与运行进程的用户属于同组，则使属性字最低3 位是文件组用户的访问权限标志。
+	// 否则属性字最低3 位是其他用户访问该文件的权限。
 	if (current->euid == inode->i_uid)
 		i >>= 6;
 	else if (in_group_p(inode->i_gid))
 		i >>= 3;
+		
+ 	// 如果上面相应用户没有执行权并且其他用户也没有任何权限，并且不是超级用户，则表明该文件不
+  	// 能被执行。于是置不可执行出错码，跳转到exec_error2 处去处理。		
 	if (!(i & 1) &&
 	    !((inode->i_mode & 0111) && suser())) {
 		retval = -ENOEXEC;
 		goto exec_error2;
 	}
+	// 读取执行文件的第一块数据到高速缓冲区，若出错则置出错码，跳转到exec_error2 处去处理。
 	if (!(bh = bread(inode->i_dev,inode->i_zone[0]))) {
 		retval = -EACCES;
 		goto exec_error2;
 	}
+	
+	// 下面对执行文件的头结构数据进行处理，首先让ex 指向执行头部分的数据结构。
 	ex = *((struct exec *) bh->b_data);	/* read exec-header */
+	//如果执行文件开始两个字节是字符“#！”，则说明执行文件是一个脚本文件
+	//如果想运行脚本文件，则需要执行脚本文件解释程序，如shell。
+	//通常脚本文件第一行文本为“#！/bin/bash”，它指明了运行脚本文件需要的解释程序
 	if ((bh->b_data[0] == '#') && (bh->b_data[1] == '!') && (!sh_bang)) {
 		/*
 		 * This section does the #! interpretation.
@@ -319,18 +346,24 @@ restart_interp:
 		char buf[128], *cp, *interp, *i_name, *i_arg;
 		unsigned long old_fs;
 
+		//从脚本文件中提取解释程序名及其参数
 		strncpy(buf, bh->b_data+2, 127);
+		//释放缓冲块并放回脚本文件i节点
 		brelse(bh);
 		iput(inode);
+		//
 		buf[127] = '\0';
 		if (cp = strchr(buf, '\n')) {
-			*cp = '\0';
+			*cp = '\0';//第一个换行符换成NULL，并去掉空格制表符
 			for (cp = buf; (*cp == ' ') || (*cp == '\t'); cp++);
 		}
-		if (!cp || *cp == '\0') {
+		if (!cp || *cp == '\0') {//若该行没有其它内容，则出错
 			retval = -ENOEXEC; /* No interpreter name found */
-			goto exec_error1;
+			goto exec_error1;//没有找到脚本执行程序
 		}
+		//得到了开头是脚本解释程序名的一行内容（字符串）
+		//首先取第一个字符串，它是解释程序名，让i_name指向该名称，若解释程序名后
+		//还有字符，则它们是解释程序的参数串，令i_arg指向该参数串
 		interp = i_name = cp;
 		i_arg = 0;
 		for ( ; *cp && (*cp != ' ') && (*cp != '\t'); cp++) {
@@ -345,7 +378,13 @@ restart_interp:
 		 * OK, we've parsed out the interpreter name and
 		 * (optional) argument.
 		 */
-		if (sh_bang++ == 0) {
+		 //现在解释程序名i_name和参数i_arg和脚本文件名作为解释程序的参数放进
+		 //环境和参数块中
+		 //首先要放函数原来提供的参数和环境字符串，然后再放这里解析出来的
+		 //例如原来的参数是“iarg1-iarg2”，解释程序名为“bash”
+		 //脚本文件名是“example.sh”参数是“arg1-arg2”
+		 //则放入参数后，新的命令类似于“bash iarg1-iarg2 example.sh arg1-arg2”
+		if (sh_bang++ == 0) {//置上sh_bang标志
 			p = copy_strings(envc, envp, page, p, 0);
 			p = copy_strings(--argc, argv+1, page, p, 0);
 		}
@@ -357,6 +396,7 @@ restart_interp:
 		 * This is done in reverse order, because of how the
 		 * user environment and arguments are stored.
 		 */
+		 //逆向复制脚本文件、解释程序的参数和解释程序文件名到参数和环境空间中
 		p = copy_strings(1, &filename, page, p, 1);
 		argc++;
 		if (i_arg) {
@@ -372,6 +412,7 @@ restart_interp:
 		/*
 		 * OK, now restart the process with the interpreter's inode.
 		 */
+		 //
 		old_fs = get_fs();
 		set_fs(get_ds());
 		if (!(inode=namei(interp))) { /* get executables inode */
@@ -382,13 +423,20 @@ restart_interp:
 		set_fs(old_fs);
 		goto restart_interp;
 	}
+	
+	// 释放该缓冲区
 	brelse(bh);
+	// 下面对执行头信息进行处理。
+	// 对于下列情况，将不执行程序：如果执行文件不是需求页可执行文件(ZMAGIC)、或者代码重定位部分
+	// 长度a_trsize 不等于0、或者数据重定位信息长度不等于0、或者代码段+数据段+堆段长度超过50MB、
+	// 或者i 节点表明的该执行文件长度小于代码段+数据段+符号表长度+执行头部分长度的总和。
 	if (N_MAGIC(ex) != ZMAGIC || ex.a_trsize || ex.a_drsize ||
 		ex.a_text+ex.a_data+ex.a_bss>0x3000000 ||
 		inode->i_size < ex.a_text+ex.a_data+ex.a_syms+N_TXTOFF(ex)) {
 		retval = -ENOEXEC;
 		goto exec_error2;
 	}
+	// 如果执行文件执行头部分长度不等于一个内存块大小（1024 字节），也不能执行。转exec_error2。
 	if (N_TXTOFF(ex) != BLOCK_SIZE) {
 		printk("%s: N_TXTOFF != BLOCK_SIZE. See a.out.h.", filename);
 		retval = -ENOEXEC;

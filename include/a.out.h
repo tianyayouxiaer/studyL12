@@ -19,10 +19,13 @@ struct exec {
 #endif
 
 #ifndef OMAGIC
+//目标文件或者不纯的可执行文件
 /* Code indicating object file or impure executable.  */
 #define OMAGIC 0407
+//纯可执行文件代号
 /* Code indicating pure executable.  */
 #define NMAGIC 0410
+//为需求分页处理的可执行文件
 /* Code indicating demand-paged executable.  */
 #define ZMAGIC 0413
 #endif /* not OMAGIC */
@@ -40,6 +43,8 @@ struct exec {
 #define _N_HDROFF(x) (SEGMENT_SIZE - sizeof (struct exec))
 
 #ifndef N_TXTOFF
+//代码部分起始偏移值，如果文件是ZMAGIC类型，即执行文件，那么代码部分是从执行文件的1024字节偏移出开始；否则执行代码
+//部分紧随执行头结构末端32字节开始，即文件是模块文件OMAGIC类型
 #define N_TXTOFF(x) \
  (N_MAGIC(x) == ZMAGIC ? _N_HDROFF((x)) + sizeof (struct exec) : sizeof (struct exec))
 #endif
