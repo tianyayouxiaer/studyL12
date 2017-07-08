@@ -223,10 +223,10 @@ _timer_interrupt:
 
 .align 2
 _sys_execve:
-	lea EIP(%esp),%eax
-	pushl %eax
+	lea EIP(%esp),%eax//eax指向向堆栈中保存用户程序eip指针处
+	pushl %eax //调用号
 	call _do_execve
-	addl $4,%esp
+	addl $4,%esp//上一个栈帧的函数返回地址
 	ret
 
 .align 2

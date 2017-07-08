@@ -8,22 +8,24 @@
 
 #include <linux/sched.h>
 
+//简单方便的管理栈数据，比如通过info.__eip就知道用户程序执行到了那条指令
+//
 struct info {
-	long ___math_ret;
-	long ___orig_eip;
-	long ___edi;
+	long ___math_ret;//math_emulate（）调用者int7的返回地址
+	long ___orig_eip;//临时保存原eip的地方
+	long ___edi;//异常中断int7处理过程入栈的寄存器
 	long ___esi;
 	long ___ebp;
-	long ___sys_call_ret;
-	long ___eax;
+	long ___sys_call_ret;//中断7返回时将去执行系统调用的返回处理代码
+	long ___eax;//以下部分与系统调用时栈中结构相同
 	long ___ebx;
 	long ___ecx;
 	long ___edx;
-	long ___orig_eax;
+	long ___orig_eax;//如果不是系统调用而是其它中断式，该值为-1
 	long ___fs;
 	long ___es;
 	long ___ds;
-	long ___eip;
+	long ___eip;//由cpu自动入栈
 	long ___cs;
 	long ___eflags;
 	long ___esp;

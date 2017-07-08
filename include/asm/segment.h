@@ -14,6 +14,8 @@ extern inline unsigned short get_fs_word(const unsigned short *addr)
 	return _v;
 }
 
+//读取fs段中指定地址处的长字（4个字节）
+//参数： addr - 指定的内存地址
 extern inline unsigned long get_fs_long(const unsigned long *addr)
 {
 	unsigned long _v;
@@ -31,7 +33,8 @@ extern inline void put_fs_word(short val,short * addr)
 {
 __asm__ ("movw %0,%%fs:%1"::"r" (val),"m" (*addr));
 }
-
+//将一字存放在fs端中指定内存地址处
+//参数 ： val - 字节值； value - 内存地址
 extern inline void put_fs_long(unsigned long val,unsigned long * addr)
 {
 __asm__ ("movl %0,%%fs:%1"::"r" (val),"m" (*addr));
@@ -44,6 +47,8 @@ __asm__ ("movl %0,%%fs:%1"::"r" (val),"m" (*addr));
  * [ nothing wrong here, Linus ]
  */
 
+//取fs段寄存器值（选择器）
+//返回：fs段寄存器值
 extern inline unsigned long get_fs() 
 {
 	unsigned short _v;
